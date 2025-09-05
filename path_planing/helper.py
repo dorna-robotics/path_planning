@@ -7,12 +7,13 @@ import node as node
 
 
 def check_collision(joint,							#In degrees
-					tool=[0,0,0,0,0,0],  			#Optional
-					load=[],						#Optional
-					scene=[],						#Optional
-					base_in_world=[0,0,0,0,0,0],	#Optional
-					frame_in_world=[0,0,0,0,0,0],	#Optional
-					aux_dir=[[0, 0, 0], [0, 0, 0]]	#Optional
+					tool=[0,0,0,0,0,0],  		
+					load=[],					
+					scene=[],					
+					base_in_world=[0,0,0,0,0,0],
+					frame_in_world=[0,0,0,0,0,0],
+					aux_dir=[[0, 0, 0], [0, 0, 0]],
+					early_exit=True
  ):
 	
 	dorna = Dorna()
@@ -120,7 +121,9 @@ def check_collision(joint,							#In degrees
 
 		#if here, meaning that a valid collision has been detected
 		tmp_res = ['scene' if prnt0 is None else prnt0.name, 'scene' if prnt1 is None else prnt1.name]
-		break
+		
+		if early_exit:
+			break
 
 	if tmp_res is not None:
 		col_res.append({"links":tmp_res})
@@ -128,5 +131,6 @@ def check_collision(joint,							#In degrees
 	return col_res
 
 
-res = check_collision([0,0,170,0,0,0]) # test function
-print(res)
+if __name__ == '__main__':
+	res = check_collision([0,0,170,0,0,0], early_exit=False) # test function
+	print(res)
