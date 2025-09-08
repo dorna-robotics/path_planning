@@ -32,11 +32,13 @@ def transform_to_matrix(xyz, rvec):
 
 
 class unified_object:
-    def __init__(self, fcl_obj, pybullet_id, mat, fcl_shape):
+    def __init__(self, fcl_obj, pybullet_id, mat, fcl_shape, pose=None, scale=None):
         self.fcl_object = fcl_obj
         self.pybullet_id = pybullet_id
         self.mat = mat
         self.fcl_shape = fcl_shape
+        self.pose = pose
+        self.scale = scale
 
 #some good functions
 
@@ -65,7 +67,7 @@ def fcl_transform_from_matrix(matrix4x4):
     else:
         raise ImportError("No suitable Transform class found in fcl module.")
 
-def create_cube(xyz_rvec, scale=[1,1,1]):
+def create_cube(xyz_rvec=[0,0,0,0,0,0], scale=[1,1,1]):
     xyz = xyz_rvec[:3]
     rvec = xyz_rvec[3:]
     tf, quat = transform_to_matrix(xyz,rvec)
@@ -79,7 +81,7 @@ def create_cube(xyz_rvec, scale=[1,1,1]):
     # PyBullet
     body_id = 0
 
-    return unified_object(fcl_obj, body_id, mat, box)
+    return unified_object(fcl_obj, body_id, mat, box, xyz_rvec, scale )
 
 """
 def create_mesh(mesh_path, xyz_rvec, scale=[1,1,1]):

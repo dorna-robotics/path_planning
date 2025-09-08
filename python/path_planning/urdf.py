@@ -4,7 +4,7 @@ import fcl
 import time
 
 import dorna2.pose as dp
-import node as nd 
+from . import node
 
 class urdf_robot:
 
@@ -43,10 +43,10 @@ class urdf_robot:
 
             local_tf = self.urdf_joint_transform(joint, joint_value) if joint else np.eye(4)
 
-            node = nd.Node(link.name, parent_node, local_tf)
-            node.lock = True
+            nod = node.Node(link.name, parent_node, local_tf)
+            nod.lock = True
 
-            self.link_nodes[link.name] = node
+            self.link_nodes[link.name] = nod
 
 
             # Visuals and Collisions
@@ -63,24 +63,24 @@ class urdf_robot:
                 # Example: only support box/sphere/cylinder for now
                 if shape.box:
                     half_extents = shape.box.size
-                    obj = nd.create_cube(xyzabc, scale = half_extents)
+                    obj = node.create_cube(xyzabc, scale = half_extents)
                 elif shape.sphere:
-                    obj = nd.create_sphere(xyzabc, scale = [1,1,1])
+                    obj = node.create_sphere(xyzabc, scale = [1,1,1])
 
                 else:
                     obj = None
                     continue
 
-                self.prnt_map[id(obj.fcl_shape)] = node
-                node.collisions.append(obj)
+                self.prnt_map[id(obj.fcl_shape)] = nod
+                nod.collisions.append(obj)
                 self.all_objs.append(obj)
 
             for j in self.robot.joints:
                 if j.parent == link_name:
-                    recurse(j.child, node)
+                    recurse(j.child, nod)
 
         self.root_link = self.robot.base_link
-        self.root_node = nd.Node(self.root_link.name, parent)
+        self.root_node = node.Node(self.root_link.name, parent)
         self.link_nodes[self.root_link.name] = self.root_node
         recurse(self.root_link.name, self.root_node)
 
@@ -102,13 +102,13 @@ class urdf_robot:
 
             g_tf = parent_tf @ local_tf
 
-            node = parent_node.children[0]
-            node.lock = True
+            nod = parent_node.children[0]
+            nod.lock = True
 
-            node.set_local_transform(local_tf)
-            node.update_collision_object_transforms(g_tf)
+            nod.set_local_transform(local_tf)
+            nod.update_collision_object_transforms(g_tf)
 
             for j in self.robot.joints:
                 if j.parent == link_name:
-                    recurse(j.child, node, joints, count + 1, g_tf)
+                    recurse(j.child, nod, joints, count + 1, g_tf)
         recurse(self.root_link.name, self.root_node, joints, -1 , offset_mat)

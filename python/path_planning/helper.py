@@ -1,9 +1,13 @@
+from . import core
+
 import numpy as np
 import fcl
 from dorna2 import pose
+from importlib.resources import files, as_file
 
-from urdf import urdf_robot
-import node as node
+
+from . import urdf
+from . import node
 
 
 def check_collision(joint,							#In degrees
@@ -16,9 +20,12 @@ def check_collision(joint,							#In degrees
 					aux_limit=[[-1,1],[-1,1]]
 	):
 	
+
 	root_node = node.Node("root")
-	urdf_path = "./resources/urdf/dorna_ta.urdf"
-	robot = urdf_robot(urdf_path, {}, root_node)
+
+	urdf_path = res = files("path_planning") / "resources" / "urdf" / "dorna_ta.urdf"
+
+	robot = urdf.urdf_robot(urdf_path, {}, root_node)
 
 	all_visuals = [] #for visualization
 	all_objects = [] #to create bvh
