@@ -95,7 +95,7 @@ class Planner:
 		self.manager.setup()  # Builds the BVH tree
 
 		self.base_in_world_mat = pose.xyzabc_to_T(self.base_in_world)
-		self.frame_in_world_inv = pose.inv_dh(pose.xyzabc_to_T(self.frame_in_world))
+		self.frame_in_world_inv = np.linalg.inv(pose.xyzabc_to_T(self.frame_in_world))
 
 		self.aux_dir_1 = self.base_in_world_mat @ np.array([self.aux_dir[0][0], self.aux_dir[0][1], self.aux_dir[0][2], 0])
 		self.aux_dir_2 = self.base_in_world_mat @ np.array([self.aux_dir[1][0], self.aux_dir[1][1], self.aux_dir[1][2], 0])
