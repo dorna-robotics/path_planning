@@ -1,6 +1,6 @@
 import numpy as np
 import fcl
-from dorna2 import Dorna
+from dorna2 import pose
 
 from urdf import urdf_robot
 import node as node
@@ -13,14 +13,12 @@ def check_collision(joint,							#In degrees
 					base_in_world=[0,0,0,0,0,0],
 					frame_in_world=[0,0,0,0,0,0],
 					aux_dir=[[0, 0, 0], [0, 0, 0]],
-					early_exit=True
- ):
+					aux_limit=[[-1,1],[-1,1]]
+	):
 	
-	dorna = Dorna()
 	root_node = node.Node("root")
-	urdf_path = "./resources/urdf/DornaTA.urdf"
+	urdf_path = "./resources/urdf/dorna_ta.urdf"
 	robot = urdf_robot(urdf_path, {}, root_node)
-
 
 	all_visuals = [] #for visualization
 	all_objects = [] #to create bvh
@@ -38,7 +36,7 @@ def check_collision(joint,							#In degrees
 		robot.all_objs.append(obj)
 		robot.prnt_map[id(obj.fcl_shape)] = robot.link_nodes["j6_link"]
 
-	#registering robot ojbects
+	#registering robot objects
 	for obj in robot.all_objs:
 		dynamic_objects.append(obj)
 		all_objects.append(obj.fcl_object)
@@ -50,8 +48,8 @@ def check_collision(joint,							#In degrees
 
 	col_res = []
 
-	base_in_world_mat = dorna.kinematic.xyzabc_to_mat(base_in_world)
-	frame_in_world_inv = dorna.kinematic.inv_dh(dorna.kinematic.xyzabc_to_mat(frame_in_world))
+	base_in_world_mat = pose.xyzabc_to_T(base_in_world)
+	frame_in_world_inv = pose.inv_dh(pose.xyzabc_to_T(frame_in_world))
 
 	aux_dir_1 = base_in_world_mat @ np.array([aux_dir[0][0], aux_dir[0][1], aux_dir[0][2],0])
 	aux_dir_2 = base_in_world_mat @ np.array([aux_dir[1][0], aux_dir[1][1], aux_dir[1][2],0])
@@ -121,9 +119,7 @@ def check_collision(joint,							#In degrees
 
 		#if here, meaning that a valid collision has been detected
 		tmp_res = ['scene' if prnt0 is None else prnt0.name, 'scene' if prnt1 is None else prnt1.name]
-		
-		if early_exit:
-			break
+
 
 	if tmp_res is not None:
 		col_res.append({"links":tmp_res})
@@ -132,5 +128,5 @@ def check_collision(joint,							#In degrees
 
 
 if __name__ == '__main__':
-	res = check_collision([0,0,170,0,0,0], early_exit=False) # test function
+	res = check_collision([0,0,170,0,0,0]) # test function
 	print(res)
