@@ -36,4 +36,5 @@ class Kinematic():
             # reset tool
             self.robot.kinematic.set_tcp_xyzabc([0, 0, 0, 0, 0, 0])
 
+
         return joint, {"j"+str(i): float(joint[i]) for i in range(len(joint))}
