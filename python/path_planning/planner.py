@@ -14,7 +14,7 @@ class Planner:
 		self,
 		*,
 		tool=None,					  # [x,y,z,rx,ry,rz]
-		load=None,					  # list of tools attached to flange
+		load=None,					  # list of tools attached
 		scene=None,					 # list of obstacles in scene
 		base_in_world=None,			 # [x,y,z,rx,ry,rz]
 		frame_in_world=None,			# [x,y,z,rx,ry,rz]

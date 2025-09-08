@@ -81,11 +81,11 @@ planner = Planner(
 Checking collision in a special joint configuration:
 
 ```python
-planner.check_collision([0,0,-169,0,0,0])
+res = planner.check_collision(joint=[0,0,-169,0,0,0]) #return list of links that collide
 ```
 
 Planning collision aware motion between start and goal joint configuration:
 
 ```python
-planner.plan([0,0,0,0,0,0,0,0],[-170,0,0,0,0,0,0,0])
+res = planner.plan(start=[0,0,0,0,0,0,0,0], goal=[-170,0,0,0,0,0,0,0]) #return the path as a list of joint values
 ```
