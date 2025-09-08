@@ -12,6 +12,8 @@ class Kinematic():
     def __init__(self, robot=None, base_in_world=[0, 0, 0, 0, 0, 0]):
         self.robot = robot
         self.base_in_world = base_in_world
+        self.planner = planner.Planner(base_in_world=base_in_world)
+
 
     def inv(self, pose_in_world, aux=[0, 0], tool=[0, 0, 0, 0, 0], init_joint=None, freedom=None):
         joint = []
@@ -28,9 +30,14 @@ class Kinematic():
             _joint = np.append(self.robot.kinematic.inv(pose_in_robot, current_joint[0:6], False, freedom=freedom)[0], aux)
             
             # check if there is a collision then set the joint
-            #for j in _joint.tolist():
-            #    if 
-            joint = _joint.tolist()
+            for j in _joint.tolist():
+                res = self.planner.check_collision(joint = j)
+                if len(res): #some collision has happens
+                    continue
+                else:
+                    joint.append(j)
+
+            #joint = _joint.tolist()
                        
         except Inverse_kinematic_error:
             # re-raise so main loop can catch it
