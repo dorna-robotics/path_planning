@@ -1,0 +1,11 @@
+{
+  "name": "ompl-demo",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "ompl",
+    "fcl",
+    "eigen3",
+    "urdfdom",
+    "urdfdom-headers",
+    "pybind11"]
+}
