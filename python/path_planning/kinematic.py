@@ -31,8 +31,8 @@ class Kinematic():
             
             # check if there is a collision then set the joint
             for j in _joint.tolist():
-                res = self.planner.check_collision(joint = j)
-                if len(res): #some collision has happens
+                res = self.planner.check_collision(joint=j)
+                if len(res)>0: #some collision has happens
                     continue
                 else:
                     joint.append(j)
