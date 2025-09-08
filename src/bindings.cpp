@@ -79,7 +79,9 @@ static py::array_t<double> to_numpy(const std::vector<Eigen::VectorXd>& wps) {
 PYBIND11_MODULE(core, m) {
   m.doc() = "OMPL-based planner (pybind11) with simple dict-based scene input";
 
-  
+  const std::string self_file = py::str(m.attr("__file__"));
+  g_pkg_dir = fs::path(self_file).parent_path().string();
+
   py::enum_<InShapeType>(m, "ShapeType")
     .value("Box",      InShapeType::Box)
     .value("Sphere",   InShapeType::Sphere)
@@ -110,7 +112,7 @@ PYBIND11_MODULE(core, m) {
       auto aux     = parse_aux(aux_dir);
 
       auto wps = run_planner(start_joint, goal_joint, limit_n, limit_p, scene_v, load_v,
-                             tool, base_in_world, frame_in_world, aux, time_limit_sec);
+                             tool, base_in_world, frame_in_world, aux, time_limit_sec, g_pkg_dir);
       return to_numpy(wps);
     },
     py::arg("start_joint"),

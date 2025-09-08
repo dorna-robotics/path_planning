@@ -1,6 +1,7 @@
 import dorna2.pose as dorna_pose
 #from dorna2 import Pose
 import numpy as np
+from . import planner
 
 class Inverse_kinematic_error(Exception):
     """Raised when inverse kinematics cannot find a valid solution."""
@@ -13,6 +14,7 @@ class Kinematic():
         self.base_in_world = base_in_world
 
     def inv(self, pose_in_world, aux=[0, 0], tool=[0, 0, 0, 0, 0], init_joint=None, freedom=None):
+        joint = []
         try:
             # current joint
             self.robot.kinematic.set_tcp_xyzabc(tool)
@@ -25,7 +27,9 @@ class Kinematic():
                                                             base_in_world=self.base_in_world)) 
             _joint = np.append(self.robot.kinematic.inv(pose_in_robot, current_joint[0:6], False, freedom=freedom)[0], aux)
             
-            # cehck if there is a collision then set the joint
+            # check if there is a collision then set the joint
+            #for j in _joint.tolist():
+            #    if 
             joint = _joint.tolist()
                        
         except Inverse_kinematic_error:

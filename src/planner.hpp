@@ -45,20 +45,18 @@ constexpr float PI = 3.14159265358979323846f;
 
 
 // for resources
+static std::string g_pkg_dir; 
 static std::string resource_path(const std::string& rel)
 {
-    try {
-        py::module_ pkg = py::module_::import("path_planning");
-        std::string init_file = py::str(pkg.attr("__file__"));  // .../site-packages/path_planning/__init__.py
-        fs::path base = fs::path(init_file).parent_path();
 
-        fs::path p = base / "data" / rel;        // <- if you used "resources", change to "resources"
+    if (!g_pkg_dir.empty()) {
+        fs::path p = fs::path(g_pkg_dir) / "resources" / rel; 
         if (fs::exists(p)) return p.string();
-    } catch (...) {
-        // ignore and try the legacy locations below
     }
 
-    throw std::runtime_error("Resource not found: " + rel);
+    // emit helpful diagnostics on failure
+    throw std::runtime_error("Resource not found: " + rel +
+                             "\nTried:\n  " + (g_pkg_dir.empty() ? "(no pkg dir)\n" : (g_pkg_dir + "/resources/" + rel + "\n")));
 }
 
 // ---------------------- Basic geometry types ----------------------
@@ -561,8 +559,10 @@ static std::vector<Eigen::VectorXd> run_planner(
     const Eigen::Matrix<double,6,1>& base_in_world,
     const Eigen::Matrix<double,6,1>& frame_in_world,
     const std::array<Eigen::Vector3d,2>& aux_dir,
-    double time_limit_sec)
+    double time_limit_sec,
+    std::string pkg_dir)
 {
+    g_pkg_dir = pkg_dir;
 
     const int DOF = static_cast<int>(q_start.size());
 
