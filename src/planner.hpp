@@ -43,6 +43,7 @@ namespace og = ompl::geometric;
 
 constexpr float PI = 3.14159265358979323846f;
 
+
 // for resources
 static std::string resource_path(const std::string& rel)
 {
@@ -168,6 +169,7 @@ public:
                          FKCallback fk,
                          std::vector<ObjectInstance> scene,
                          std::vector<ObjectInstance> load,
+                         Eigen::Isometry3d tcp,
                          Eigen::Isometry3d frame,
                          size_t lastLinkIndex)
         : ob::StateValidityChecker(si),
@@ -178,6 +180,8 @@ public:
           loadLocal_(std::move(load)),
           lastLinkIndex_(lastLinkIndex) {
         
+        tcp_ = tcp;
+
         for (size_t i = 0; i + 1 < linkGeoms_.size(); ++i)
             adjacentPairs_.emplace_back(i, i+1);
 
@@ -252,7 +256,7 @@ public:
         loadObjs_.reserve(loadLocal_.size());
         const Eigen::Isometry3d& Tlast = linkWorld_[lastLinkIndex_ ]; //flange is one after the last link
         for (size_t i = 0; i < loadLocal_.size(); ++i) {
-            Eigen::Isometry3d Tworld = Tlast * loadLocal_[i].pose.toIsometry();
+            Eigen::Isometry3d Tworld = Tlast * tcp_ * loadLocal_[i].pose.toIsometry();
             fcl::CollisionObjectd obj(loadGeoms_[i], Tworld);
             obj.computeAABB();
             loadObjs_.push_back(std::move(obj));
@@ -315,6 +319,7 @@ private:
     std::vector<ObjectInstance> scene_;
     std::vector<ObjectInstance> loadLocal_;
     size_t lastLinkIndex_;
+    Eigen::Isometry3d tcp_;
 
     // prebuilt geoms
     std::vector<std::shared_ptr<fcl::CollisionGeometryd>> envGeoms_;
@@ -352,6 +357,7 @@ public:
                       FKCallback fk,
                       std::vector<ObjectInstance> scene,
                       std::vector<ObjectInstance> load,
+                      Eigen::Isometry3d tcp,
                       Eigen::Isometry3d frame,
                       PlanOptions opts = {},
                       PlannerConfig pcfg = {})
@@ -377,7 +383,7 @@ public:
         // 2) Validity checker (FCL env + load)
         auto vc = std::make_shared<RobotValidityChecker>(
             si_, dof_, std::move(linkGeoms), std::move(fk),
-            std::move(scene), std::move(load), frame, lastLinkIndex);
+            std::move(scene), std::move(load), tcp, frame, lastLinkIndex);
         ss_->setStateValidityChecker(vc);
 
         // 3) Planner
@@ -621,11 +627,15 @@ static std::vector<Eigen::VectorXd> run_planner(
 
 
     //geometry stuff
-    PoseAA base_pose, frame_pose;
+    PoseAA base_pose, frame_pose, tool_pose;
     base_pose.set(base_in_world);
     frame_pose.set(frame_in_world);
+    tool_pose.set(tool);
+
     Eigen::Isometry3d base = base_pose.toIsometry();
     Eigen::Isometry3d frame = frame_pose.toIsometry();
+    Eigen::Isometry3d tool_iso = tool_pose.toIsometry();
+
     Eigen::Vector3d aux_dir_1 = base.rotation() * aux_dir[0];
     Eigen::Vector3d aux_dir_2 = base.rotation() * aux_dir[1];
 
@@ -660,7 +670,7 @@ static std::vector<Eigen::VectorXd> run_planner(
     cfg.range = 0.08;
     cfg.goalBias = 0.05;
 
-    JointSpacePlanner planner(DOF, limits, links, lastLinkIndex, fk_cb, out_scene, out_load, frame, opts, cfg);
+    JointSpacePlanner planner(DOF, limits, links, lastLinkIndex, fk_cb, out_scene, out_load, tool_iso, frame,  opts, cfg);
 
     auto result = planner.plan(q_start, q_goal);
     if (!result.solved) { std::vector<Eigen::VectorXd> empty_path; return  empty_path;}

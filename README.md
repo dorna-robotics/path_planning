@@ -69,10 +69,10 @@ for i in range(4):
 load = [Planner.create_cube([0,0,0.03,0,0,0], [0.01,0.01,0.05])  ]
 
 planner = Planner(    
-    scene = scene,
+    scene         = scene,
     load          = load,
-    tool          = [0,0,0, 0,0,0],
-    base_in_world = [0,0,0, 0,0,0],
+    tool          = [0,0,0,0,0,0],
+    base_in_world = [0,0,0,0,0,0],
     frame_in_world= [0.0,0.0,0.0, 0,0,0],
     aux_dir       = [ [1,0,0], [0,0,0] ]
     )
