@@ -16,7 +16,10 @@ class Kinematic():
 
 
     def inv(self, pose_in_world, aux=[0, 0], tool=[0, 0, 0, 0, 0], init_joint=None, freedom=None):
+        
+        self.planner.update(tool=tool)
         joint = []
+
         try:
             # current joint
             self.robot.kinematic.set_tcp_xyzabc(tool)
@@ -31,6 +34,17 @@ class Kinematic():
             
             # check if there is a collision then set the joint
             for j in _joint.tolist():
+
+                if len(j)>6:
+                    j[6] = aux[0]
+                else:
+                    j.append(aux[0])
+                
+                if len(j)>7:
+                    j[7] = aux[1]
+                else:
+                    j.append(aux[1])
+                    
                 res = self.planner.check_collision(joint=j)
                 if len(res)>0: #some collision has happens
                     continue
