@@ -1,5 +1,5 @@
 import dorna2.pose as dorna_pose
-from dorna2 import Pose
+#from dorna2 import Pose
 import numpy as np
 
 

@@ -35,8 +35,8 @@ vcpkg install fcl
 vcpkg install pybind11
 
 cd ~
-git clone dorna-robotics/path_planning
-cd dorna-robotics/path_planning
+git clone https://github.com/dorna-robotics/path_planning.git
+cd path_planning
 
 cmake --preset rpi-arm64   -D Python3_EXECUTABLE="$(command -v python3)"   -D Python3_INCLUDE_DIR="/usr/include/python3.11"   -D Python3_LIBRARY="/usr/lib/aarch64-linux-gnu/libpython3.11.so"
 
