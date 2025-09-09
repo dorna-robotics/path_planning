@@ -180,14 +180,6 @@ class Node:
         self.local_transform = new_local
 
 
-    #add a new collision shape to this node, obj is a fcl collision obj. tf is the 4x4 matrix transformation in
-    #the nodes local coordiante system
-    def add_collision(self, obj, tf): 
-        t1 = fcl_transform_from_matrix(self.get_global_transform() @ tf)
-        collision_obj = fcl.CollisionObject(obj, t1)
-        self.collisions.append(CollisionShape(self,tf, obj, collision_obj))
-
-
     def update_collision_object_transforms(self, gt=None):
         if gt is None:
             gt = self.get_global_transform()
