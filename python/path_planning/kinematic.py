@@ -1,5 +1,4 @@
 import dorna2.pose as dorna_pose
-#from dorna2 import Pose
 import numpy as np
 from . import planner
 
@@ -12,7 +11,7 @@ class Kinematic():
     def __init__(self, robot=None, base_in_world=[0, 0, 0, 0, 0, 0]):
         self.robot = robot
         self.base_in_world = base_in_world
-        self.planner = planner.Planner(base_in_world=base_in_world)
+        self.planner = planner.Planner(base_in_world=self.base_in_world)
 
 
     def inv(self, pose_in_world, aux=[0, 0], tool=[0, 0, 0, 0, 0, 0], init_joint=None, freedom=None):
