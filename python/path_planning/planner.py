@@ -82,7 +82,7 @@ class Planner:
 		limits = self.dorna.kinematic.limits
 		self.limit_n       = [limits["j0"][0],limits["j1"][0],limits["j2"][0],limits["j3"][0],limits["j4"][0],limits["j5"][0],self.aux_limit[0][0], self.aux_limit[1][0]]
 		self.limit_p       = [limits["j0"][1],limits["j1"][1],limits["j2"][1],limits["j3"][1],limits["j4"][1],limits["j5"][1],self.aux_limit[0][1], self.aux_limit[1][1]]
-		
+
 		#mm to m
 		self.tool = mm_to_m_6(self.tool)
 		self.base_in_world = mm_to_m_6(self.base_in_world)
@@ -142,13 +142,11 @@ class Planner:
 
 	def check_collision(self, joint):
 
-		#check aux limits
-		if len(joint)>6:
-			if joint[6]<self.aux_limit[0][0] or joint[6]>self.aux_limit[0][1]:
-				return [{"links":["aux0_limit",None]}]
-		if len(joint)>7:
-			if joint[7]<self.aux_limit[1][0] or joint[7]>self.aux_limit[1][1]:
-				return [{"links":["aux1_limit",None]}]
+		#check limits
+		for i in range(len(joint)):
+			if joint[i]<self.limit_n[i] or joint[i]>self.limit_p[i]:
+				return [{"links":["j"+str(i)+"_limit",None]}]			
+
 
 		col_res = []
 
