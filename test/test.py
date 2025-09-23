@@ -28,4 +28,5 @@ planner = Planner(
     )
 
 print(planner.check_collision([45,0,0,0,0,0]) , " \n \n \n ")
-print(planner.plan([0,0,0,0,0,0,0,0],[-170,0,0,0,0,0,0,0]))
+res = (planner.plan([0,0,0,0,0,0],[-170,0,0,0,0,0]))
+print(res)

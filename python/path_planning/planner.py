@@ -104,8 +104,8 @@ class Planner:
 		#placing tool objects
 		for obj in self.load:
 			#create new obj
-			new_pose = m_to_mm_6(pose.T_to_xyzabc(pose.xyzabc_to_T(self.tool) @ pose.xyzabc_to_T(mm_to_m_6(obj.pose))))
-			new_obj = create_cube(new_pose, [obj.scale[0]*1000, obj.scale[1]*1000, obj.scale[2]*1000])
+			new_pose = m_to_mm_6(pose.T_to_xyzabc(np.matrix(pose.xyzabc_to_T(self.tool)) @ np.matrix(pose.xyzabc_to_T(mm_to_m_6(obj.pose)))))
+			new_obj = Planner.create_cube(new_pose, [obj.scale[0]*1000, obj.scale[1]*1000, obj.scale[2]*1000])
 
 			self.robot.link_nodes["j6_link"].collisions.append(new_obj)
 			self.robot.all_objs.append(new_obj)
@@ -247,13 +247,16 @@ class Planner:
 								"pose":  obj.pose,          # vec6
 								"scale": obj.scale,                # vec3
 								"type":  core.ShapeType.Box         # enum 
-								})		
+								})	
 
+		dof = len(start)
+		limit_n       = [-180,-180,-180,-180,-180,-180,self.aux_limit[0][0], self.aux_limit[1][0]]
+		limit_p       = [180,180,180,180,180,180,self.aux_limit[0][1], self.aux_limit[1][1]]
 		path = core.plan(
 						start_joint   = np.array(start, dtype=float),
 						goal_joint    = np.array(goal, dtype=float),
-						limit_n       = np.array([-180,-180,-180,-180,-180,-180,self.aux_limit[0][0], self.aux_limit[1][0]], dtype=float),
-						limit_p       = np.array([180,180,180,180,180,180,self.aux_limit[0][1], self.aux_limit[1][1]], dtype=float),
+						limit_n       = np.array(limit_n[:dof], dtype=float),
+						limit_p       = np.array(limit_p[:dof], dtype=float),
 						scene         = scene_list,
 						load          = load_list,
 						gripper       = gripper_list,
