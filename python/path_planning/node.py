@@ -68,13 +68,21 @@ def fcl_transform_from_matrix(matrix4x4):
         raise ImportError("No suitable Transform class found in fcl module.")
 
 def create_cube(xyz_rvec=[0,0,0,0,0,0], scale=[1,1,1]):
-    xyz = xyz_rvec[:3]
+    
+    xyz_rvec[0] = xyz_rvec[0] / 1000
+    xyz_rvec[1] = xyz_rvec[1] / 1000
+    xyz_rvec[2] = xyz_rvec[2] / 1000
+
+    scale[0] = scale[0]/1000
+    scale[1] = scale[1]/1000
+    scale[2] = scale[2]/1000
+
+    xyz = xyz_rvec[:3] 
     rvec = xyz_rvec[3:]
     tf, quat = transform_to_matrix(xyz,rvec)
     mat = dp.xyzabc_to_T(xyz_rvec)
 
     # FCL
-    half_extents = [s / 2.0 for s in scale]
     box = fcl.Box(*scale)
     fcl_obj = fcl.CollisionObject(box, tf)
 
@@ -119,11 +127,14 @@ def create_mesh(mesh_path, xyz_rvec, scale=[1,1,1]):
 """
 
 def create_sphere(xyz_rvec, scale=[1,1,1]):
+    xyz_rvec[0] = xyz_rvec[0] / 1000
+    xyz_rvec[1] = xyz_rvec[1] / 1000
+    xyz_rvec[2] = xyz_rvec[2] / 1000
     xyz = xyz_rvec[:3]
     rvec = xyz_rvec[3:]
     tf, quat = transform_to_matrix(xyz, rvec)
     mat = dp.xyzabc_to_T(xyz_rvec)
-    radius = scale[0]  # uniform scale only
+    radius = scale[0]/1000  # uniform scale only
     sphere = fcl.Sphere(radius)
     fcl_obj = fcl.CollisionObject(sphere, tf)
 

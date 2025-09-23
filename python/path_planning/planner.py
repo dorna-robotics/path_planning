@@ -7,6 +7,17 @@ from importlib.resources import files, as_file
 from . import urdf
 from . import node
 
+def mm_to_m_6(xyzabc):
+	xyzabc[0] = xyzabc[0]/1000
+	xyzabc[1] = xyzabc[1]/1000
+	xyzabc[2] = xyzabc[2]/1000
+	return xyzabc
+
+def m_to_mm_6(xyzabc):
+	xyzabc[0] = xyzabc[0]*1000
+	xyzabc[1] = xyzabc[1]*1000
+	xyzabc[2] = xyzabc[2]*1000
+	return xyzabc
 
 class Planner:
 
@@ -15,6 +26,7 @@ class Planner:
 		*,
 		tool=None,					  # [x,y,z,rx,ry,rz]
 		load=None,					  # list of tools attached
+		gripper=None,
 		scene=None,					 # list of obstacles in scene
 		base_in_world=None,			 # [x,y,z,rx,ry,rz]
 		frame_in_world=None,			# [x,y,z,rx,ry,rz]
@@ -22,6 +34,7 @@ class Planner:
 		aux_limit=None,				 # [[min,max],[min,max]]
 	):
 		self.tool = [0, 0, 0, 0, 0, 0] if tool is None else tool
+		self.gripper = [] if gripper is None else gripper
 		self.load = [] if load is None else load
 		self.scene = [] if scene is None else scene
 		self.base_in_world = [0, 0, 0, 0, 0, 0] if base_in_world is None else base_in_world
@@ -41,6 +54,7 @@ class Planner:
 		frame_in_world=None,
 		aux_dir=None,
 		aux_limit=None,
+		gripper=None
 	):
 		"""Update any subset of stored parameters."""
 		if tool is not None:
@@ -57,10 +71,19 @@ class Planner:
 			self.aux_dir = aux_dir
 		if aux_limit is not None:
 			self.aux_limit = aux_limit
-
+		if gripper is not None:
+			self.gripper = gripper
 		self.rebuild()
 
 	def rebuild(self):
+
+		#mm to m
+		self.tool = mm_to_m_6(self.tool)
+		self.base_in_world = mm_to_m_6(self.base_in_world)
+		self.frame_in_world = mm_to_m_6(self.frame_in_world )
+		self.aux_dir = [[self.aux_dir[0][0]/1000, self.aux_dir[0][1]/1000, self.aux_dir[0][2]/1000],
+						[self.aux_dir[1][0]/1000, self.aux_dir[1][1]/1000, self.aux_dir[1][2]/1000]]
+
 		#rebuilding initialization stuff
 		self.root_node = node.Node("root")
 
@@ -80,6 +103,16 @@ class Planner:
 
 		#placing tool objects
 		for obj in self.load:
+			#create new obj
+			new_pose = m_to_mm_6(pose.T_to_xyzabc(pose.xyzabc_to_T(self.tool) @ pose.xyzabc_to_T(mm_to_m_6(obj.pose))))
+			new_obj = create_cube(new_pose, [obj.scale[0]*1000, obj.scale[1]*1000, obj.scale[2]*1000])
+
+			self.robot.link_nodes["j6_link"].collisions.append(new_obj)
+			self.robot.all_objs.append(new_obj)
+			self.robot.prnt_map[id(new_obj.fcl_shape)] = self.robot.link_nodes["j6_link"]
+
+		#placing tool objects
+		for obj in self.gripper:
 			self.robot.link_nodes["j6_link"].collisions.append(obj)
 			self.robot.all_objs.append(obj)
 			self.robot.prnt_map[id(obj.fcl_shape)] = self.robot.link_nodes["j6_link"]
@@ -106,7 +139,7 @@ class Planner:
 		#check aux limits
 		if len(joint)>6:
 			if joint[6]<self.aux_limit[0][0] or joint[6]>self.aux_limit[0][1]:
-				return [{"links":"aux0_limit"}]
+				return [{"links":["aux0_limit",None]}]
 		if len(joint)>7:
 			if joint[7]<self.aux_limit[1][0] or joint[7]>self.aux_limit[1][1]:
 				return [{"links":["aux1_limit",None]}]
@@ -192,6 +225,7 @@ class Planner:
 
 	def plan(self, start, goal):
 		scene_list = []
+		gripper_list = []
 		load_list = []
 
 		for obj in self.scene:
@@ -208,6 +242,13 @@ class Planner:
 								"type":  core.ShapeType.Box         # enum 
 								})		
 
+		for obj in self.gripper:
+			gripper_list.append({
+								"pose":  obj.pose,          # vec6
+								"scale": obj.scale,                # vec3
+								"type":  core.ShapeType.Box         # enum 
+								})		
+
 		path = core.plan(
 						start_joint   = np.array(start, dtype=float),
 						goal_joint    = np.array(goal, dtype=float),
@@ -215,6 +256,7 @@ class Planner:
 						limit_p       = np.array([180,180,180,180,180,180,self.aux_limit[0][1], self.aux_limit[1][1]], dtype=float),
 						scene         = scene_list,
 						load          = load_list,
+						gripper       = gripper_list,
 						tool          = np.array(self.tool, dtype=float),
 						base_in_world = np.array(self.base_in_world, dtype=float),
 						frame_in_world= np.array(self.frame_in_world, dtype=float),

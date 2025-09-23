@@ -167,6 +167,7 @@ public:
                          FKCallback fk,
                          std::vector<ObjectInstance> scene,
                          std::vector<ObjectInstance> load,
+                         std::vector<ObjectInstance> gripper,
                          Eigen::Isometry3d tcp,
                          Eigen::Isometry3d frame,
                          size_t lastLinkIndex)
@@ -176,6 +177,7 @@ public:
           fk_(std::move(fk)),
           scene_(std::move(scene)),
           loadLocal_(std::move(load)),
+          gripperLocal_(std::move(gripper)),
           lastLinkIndex_(lastLinkIndex) {
         
         tcp_ = tcp;
@@ -194,6 +196,12 @@ public:
         for (auto& obj : loadLocal_) {
             loadGeoms_.push_back(makeFclGeometry(obj.shape));
         }
+        // Pre-build FCL geometry for gripper
+        gripperGeoms_.reserve(gripperLocal_.size());
+        for (auto& obj : gripperLocal_) {
+            gripperGeoms_.push_back(makeFclGeometry(obj.shape));
+        }
+
         // Pre-build FCL geometry for robot links
         linkGeomsFcl_.clear();
         linkGeomsFcl_.reserve(
@@ -249,13 +257,19 @@ public:
             }
         }
 
-        // 5) Build load objects (attached to last link)
+        // 5) Build load and gripper objects (attached to last link) call all of the load
         loadObjs_.clear();
-        loadObjs_.reserve(loadLocal_.size());
-        const Eigen::Isometry3d& Tlast = linkWorld_[lastLinkIndex_ ]; //flange is one after the last link
+        loadObjs_.reserve(loadLocal_.size()+gripperLocal_.size());
+        const Eigen::Isometry3d& Tflange = linkWorld_[linkWorld_.size() - 1]; //flange is one after the last link
         for (size_t i = 0; i < loadLocal_.size(); ++i) {
-            Eigen::Isometry3d Tworld = Tlast * tcp_ * loadLocal_[i].pose.toIsometry();
+            Eigen::Isometry3d Tworld = Tflange * tcp_ * loadLocal_[i].pose.toIsometry();
             fcl::CollisionObjectd obj(loadGeoms_[i], Tworld);
+            obj.computeAABB();
+            loadObjs_.push_back(std::move(obj));
+        }
+        for (size_t i = 0; i < gripperLocal_.size(); ++i) {
+            Eigen::Isometry3d Tworld = Tflange * gripperLocal_[i].pose.toIsometry();
+            fcl::CollisionObjectd obj(gripperGeoms_[i], Tworld);
             obj.computeAABB();
             loadObjs_.push_back(std::move(obj));
         }
@@ -274,7 +288,7 @@ public:
             }
         }
         
-                // self-collision: skip same-link & adjacent links
+        // self-collision: skip same-link & adjacent links
         auto isAdjacent = [&](size_t a, size_t b) {
             if (a > b) std::swap(a,b);
             for (auto& p : adjacentPairs_) if (p.first==a && p.second==b) return true;
@@ -288,6 +302,17 @@ public:
                 if (la == lb)          continue; // shapes on same link
                 if (isAdjacent(la,lb)) continue; // parent/child links
                 if (collide(linkObjs_[a], linkObjs_[b])) return false;
+            }
+        }
+
+        //load vs robot 
+        for (size_t a = 0; a < linkObjs_.size(); ++a) {
+            for (auto& loadObj : loadObjs_) {
+                const size_t la = linkOfObj_[a];
+                const size_t lb = linkGeoms_.size() - 1;
+                if (la == lb)          continue; // shapes on same link
+                //if (isAdjacent(la,lb)) continue; // parent/child links
+                if (collide(linkObjs_[a], loadObj)) return false;
             }
         }
 
@@ -316,12 +341,14 @@ private:
     FKCallback fk_;
     std::vector<ObjectInstance> scene_;
     std::vector<ObjectInstance> loadLocal_;
+    std::vector<ObjectInstance> gripperLocal_;
     size_t lastLinkIndex_;
     Eigen::Isometry3d tcp_;
 
     // prebuilt geoms
     std::vector<std::shared_ptr<fcl::CollisionGeometryd>> envGeoms_;
     std::vector<std::shared_ptr<fcl::CollisionGeometryd>> loadGeoms_;
+    std::vector<std::shared_ptr<fcl::CollisionGeometryd>> gripperGeoms_;
     std::vector<std::shared_ptr<fcl::CollisionGeometryd>> linkGeomsFcl_;
 
     // reused buffers (mutable to allow reuse inside isValid)
@@ -355,6 +382,7 @@ public:
                       FKCallback fk,
                       std::vector<ObjectInstance> scene,
                       std::vector<ObjectInstance> load,
+                      std::vector<ObjectInstance> gripper,
                       Eigen::Isometry3d tcp,
                       Eigen::Isometry3d frame,
                       PlanOptions opts = {},
@@ -381,7 +409,7 @@ public:
         // 2) Validity checker (FCL env + load)
         auto vc = std::make_shared<RobotValidityChecker>(
             si_, dof_, std::move(linkGeoms), std::move(fk),
-            std::move(scene), std::move(load), tcp, frame, lastLinkIndex);
+            std::move(scene), std::move(load), std::move(gripper), tcp, frame, lastLinkIndex);
         ss_->setStateValidityChecker(vc);
 
         // 3) Planner
@@ -555,6 +583,7 @@ static std::vector<Eigen::VectorXd> run_planner(
     Eigen::VectorXd& limit_p,
     const std::vector<InputShape>& scene,
     const std::vector<InputShape>& load,
+    const std::vector<InputShape>& gripper,
     const Eigen::Matrix<double,6,1>& tool,
     const Eigen::Matrix<double,6,1>& base_in_world,
     const Eigen::Matrix<double,6,1>& frame_in_world,
@@ -602,7 +631,7 @@ static std::vector<Eigen::VectorXd> run_planner(
     // 3) Scene & load (same structs as before)
     std::vector<ObjectInstance> out_scene; /* ... fill from your app ... */
     std::vector<ObjectInstance> out_load;  /* ... attached to last link ... */
-
+    std::vector<ObjectInstance> out_gripper;  /* ... attached to last link ... */
 
     //scene generation
     for(int i=0; i<scene.size(); i++){
@@ -623,6 +652,16 @@ static std::vector<Eigen::VectorXd> run_planner(
         bin.pose.t     = Eigen::Vector3d(o.pose(0), o.pose(1), o.pose(2));
         bin.pose.rvec  = Eigen::Vector3d(o.pose(3), o.pose(4), o.pose(5));
         out_load.push_back(bin);
+    } 
+    //gripper generation
+    for(int i=0; i<gripper.size(); i++){
+        ObjectInstance bin;
+        bin.shape.type = ShapeType::BOX;
+        auto o = gripper[i];
+        bin.shape.box  = {o.scale(0),o.scale(1),o.scale(2)};
+        bin.pose.t     = Eigen::Vector3d(o.pose(0), o.pose(1), o.pose(2));
+        bin.pose.rvec  = Eigen::Vector3d(o.pose(3), o.pose(4), o.pose(5));
+        out_gripper.push_back(bin);
     } 
 
 
@@ -670,7 +709,7 @@ static std::vector<Eigen::VectorXd> run_planner(
     cfg.range = 0.08;
     cfg.goalBias = 0.05;
 
-    JointSpacePlanner planner(DOF, limits, links, lastLinkIndex, fk_cb, out_scene, out_load, tool_iso, frame,  opts, cfg);
+    JointSpacePlanner planner(DOF, limits, links, lastLinkIndex, fk_cb, out_scene, out_load, out_gripper, tool_iso, frame,  opts, cfg);
 
     auto result = planner.plan(q_start, q_goal);
     if (!result.solved) { std::vector<Eigen::VectorXd> empty_path; return  empty_path;}

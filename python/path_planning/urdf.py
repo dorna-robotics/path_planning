@@ -62,7 +62,10 @@ class urdf_robot:
                 xyzabc = dp.T_to_xyzabc(tf)
                 # Example: only support box/sphere/cylinder for now
                 if shape.box:
-                    half_extents = shape.box.size
+                    half_extents = shape.box.size * 1000
+                    xyzabc[0] = xyzabc[0]*1000
+                    xyzabc[1] = xyzabc[1]*1000
+                    xyzabc[2] = xyzabc[2]*1000
                     obj = node.create_cube(xyzabc, scale = half_extents)
                 elif shape.sphere:
                     obj = node.create_sphere(xyzabc, scale = [1,1,1])

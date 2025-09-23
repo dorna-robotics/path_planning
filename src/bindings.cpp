@@ -97,6 +97,7 @@ PYBIND11_MODULE(core, m) {
        Eigen::VectorXd& limit_p,
        py::object scene,
        py::object load,
+       py::object gripper,
        const Eigen::Matrix<double,6,1>& tool,
        const Eigen::Matrix<double,6,1>& base_in_world,
        const Eigen::Matrix<double,6,1>& frame_in_world,
@@ -109,9 +110,10 @@ PYBIND11_MODULE(core, m) {
 
       auto scene_v = parse_shape_list(scene);
       auto load_v  = parse_shape_list(load);
+      auto gripper_v = parse_shape_list(gripper);
       auto aux     = parse_aux(aux_dir);
 
-      auto wps = run_planner(start_joint, goal_joint, limit_n, limit_p, scene_v, load_v,
+      auto wps = run_planner(start_joint, goal_joint, limit_n, limit_p, scene_v, load_v, gripper_v,
                              tool, base_in_world, frame_in_world, aux, time_limit_sec, g_pkg_dir);
       return to_numpy(wps);
     },
@@ -121,13 +123,14 @@ PYBIND11_MODULE(core, m) {
     py::arg("limit_p"),
     py::arg("scene") = py::none(),
     py::arg("load")  = py::none(),
+    py::arg("gripper") = py::none(),
     py::arg("tool"),
     py::arg("base_in_world"),
     py::arg("frame_in_world"),
     py::arg("aux_dir"),
     py::arg("time_limit_sec") = 1.0,
     R"doc(
-plan(start_joint=..., goal_joint=..., scene=[{pose,scale,type},...], load=[...],
+plan(start_joint=..., goal_joint=..., scene=[{pose,scale,type},...], load=[...], gripper = [...]
      tool=[6], base_in_world=[6], frame_in_world=[6], aux_dir=[[3],[3]], time_limit_sec=1.0) -> np.ndarray (N, DOF)
 
 - start_joint / goal_joint: 1D arrays; DOF inferred from length.
