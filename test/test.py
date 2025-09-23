@@ -15,12 +15,12 @@ for i in range(4):
     scene.append(Planner.create_cube( [l*np.cos(t),l*np.sin(t),0, 0, 0, 0],[50, 50, 800] ))
 
 load = [Planner.create_cube([0,0,30,0,0,0], [10,10,5])  ]
-gripper = [Planner.create_cube([0,0,30,0,0,0], [10,10,5])  ]
+gripper = [Planner.create_cube([0,0,40,0,0,0], [10,10,5])  ]
 
 planner = Planner(    
     scene = scene,
     load          = load,
-    tool          = [0,0,0, 0,0,0],
+    tool          = [0,0,10, 0,0,0],
     gripper        = gripper,
     base_in_world = [0,0,0, 0,0,0],
     frame_in_world= [0.0,0.0,0.0, 0,0,0],

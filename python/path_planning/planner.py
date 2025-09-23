@@ -1,7 +1,7 @@
 from . import core
 import numpy as np
 import fcl
-from dorna2 import pose
+from dorna2 import pose, Dorna
 from importlib.resources import files, as_file
 
 from . import urdf
@@ -77,6 +77,12 @@ class Planner:
 
 	def rebuild(self):
 
+		#limits
+		self.dorna = Dorna()
+		limits = self.dorna.kinematic.limits
+		self.limit_n       = [limits["j0"][0],limits["j1"][0],limits["j2"][0],limits["j3"][0],limits["j4"][0],limits["j5"][0],self.aux_limit[0][0], self.aux_limit[1][0]]
+		self.limit_p       = [limits["j0"][1],limits["j1"][1],limits["j2"][1],limits["j3"][1],limits["j4"][1],limits["j5"][1],self.aux_limit[0][1], self.aux_limit[1][1]]
+		
 		#mm to m
 		self.tool = mm_to_m_6(self.tool)
 		self.base_in_world = mm_to_m_6(self.base_in_world)
@@ -250,13 +256,12 @@ class Planner:
 								})	
 
 		dof = len(start)
-		limit_n       = [-180,-180,-180,-180,-180,-180,self.aux_limit[0][0], self.aux_limit[1][0]]
-		limit_p       = [180,180,180,180,180,180,self.aux_limit[0][1], self.aux_limit[1][1]]
+
 		path = core.plan(
 						start_joint   = np.array(start, dtype=float),
 						goal_joint    = np.array(goal, dtype=float),
-						limit_n       = np.array(limit_n[:dof], dtype=float),
-						limit_p       = np.array(limit_p[:dof], dtype=float),
+						limit_n       = np.array(self.limit_n[:dof], dtype=float),
+						limit_p       = np.array(self.limit_p[:dof], dtype=float),
 						scene         = scene_list,
 						load          = load_list,
 						gripper       = gripper_list,
