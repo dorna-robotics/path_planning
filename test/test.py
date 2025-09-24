@@ -27,6 +27,6 @@ planner = Planner(
     aux_dir       = [ [1,0,0], [0,0,0] ]
     )
 
-print(planner.check_collision([-345,0,0,0,0,0]) , " \n \n \n ")
+print(planner.check_collision([-179,0,0,0,0,0]) , " \n \n \n ")
 res = (planner.plan([0,0,0,0,0,0],[-170,0,0,0,0,0]))
 #print(res)
