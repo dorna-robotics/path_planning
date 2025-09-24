@@ -79,7 +79,11 @@ class Planner:
 
 		#limits
 		self.dorna = Dorna()
-		limits = self.dorna.kinematic.limits
+		if hasattr(self.dorna.kinematic, 'limits'):
+			limits = self.dorna.kinematic.limits
+		else:
+			limits = {"j0":[-180,180],"j1":[-180,180],"j2":[-180,180],"j3":[-180,180],"j4":[-180,180],"j5":[-180,180]}
+			
 		self.limit_n       = [limits["j0"][0],limits["j1"][0],limits["j2"][0],limits["j3"][0],limits["j4"][0],limits["j5"][0],self.aux_limit[0][0], self.aux_limit[1][0]]
 		self.limit_p       = [limits["j0"][1],limits["j1"][1],limits["j2"][1],limits["j3"][1],limits["j4"][1],limits["j5"][1],self.aux_limit[0][1], self.aux_limit[1][1]]
 
