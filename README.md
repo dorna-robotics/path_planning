@@ -20,7 +20,14 @@ For Linux:
 sudo apt update
 sudo apt install pkg-config autoconf libtool intltool automake autoconf-archive gettext
 
+#installing py-fcl and urchin
+git clone https://github.com/BerkeleyAutomation/python-fcl.git
+cd python-fcl
+sudo python3 setup.py install
+sudo pip3 install urchin --break-system-packages
 
+
+#install vcpkg and dependencies
 git clone https://github.com/microsoft/vcpkg.git
 cd vcpkg
 ./bootstrap-vcpkg.sh
@@ -41,16 +48,14 @@ rm -rf buildtrees
 
 
 
-
+# downloading and building the library
 cd ~
 git clone https://github.com/dorna-robotics/path_planning.git
 cd path_planning
 
-cmake --preset rpi-arm64   -D Python3_EXECUTABLE="$(command -v python3)"   -D Python3_INCLUDE_DIR="/usr/include/python3.11"   -D Python3_LIBRARY="/usr/lib/aarch64-linux-gnu/libpython3.11.so"
-
-cmake --build build/rpi-arm64 --config Release -j
-
-sudo cmake --install build/rpi-arm64 --config Release
+cmake --preset rpi-arm64
+cmake --build --preset build-rpi64 -j
+sudo cmake --install build/rpi-arm64
 
 ```
 
