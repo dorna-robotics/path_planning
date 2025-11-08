@@ -24,7 +24,7 @@ sudo apt install pkg-config autoconf libtool intltool automake autoconf-archive 
 git clone https://github.com/microsoft/vcpkg.git
 cd vcpkg
 ./bootstrap-vcpkg.sh
-echo 'export VCPKG_ROOT="$HOME/vcpkg"' >> ~/.bashrc
+echo "export VCPKG_ROOT=\"$(pwd)\"" >> ~/.bashrc
 echo 'export PATH="$VCPKG_ROOT:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 
@@ -33,6 +33,14 @@ vcpkg install urdfdom
 vcpkg install urdfdom-headers
 vcpkg install fcl
 vcpkg install pybind11
+
+#optional: clearing unnessary vcpkg files:
+rm -rf downloads
+rm -rf packages
+rm -rf buildtrees
+
+
+
 
 cd ~
 git clone https://github.com/dorna-robotics/path_planning.git
