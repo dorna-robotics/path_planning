@@ -59,6 +59,19 @@ sudo cmake --install build/rpi-arm64
 
 ```
 
+How to update:
+```powershell
+
+cd path_planning
+git pull
+
+rm -rf build/
+
+cmake --preset rpi-arm64
+cmake --build --preset build-rpi64 -j
+sudo cmake --install build/rpi-arm64
+
+```
 
 ## Example
 
