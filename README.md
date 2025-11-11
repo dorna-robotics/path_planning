@@ -20,11 +20,6 @@ For Linux:
 sudo apt update
 sudo apt install pkg-config autoconf libtool intltool automake autoconf-archive gettext
 
-#installing py-fcl and urchin
-git clone https://github.com/BerkeleyAutomation/python-fcl.git
-cd python-fcl
-sudo python3 setup.py install
-sudo pip3 install urchin --break-system-packages
 
 
 #install vcpkg and dependencies
@@ -45,6 +40,15 @@ vcpkg install pybind11
 rm -rf downloads
 rm -rf packages
 rm -rf buildtrees
+
+
+#installing py-fcl and urchin
+sudo apt install -y libfcl-dev libccd-dev libeigen3-dev liboctomap-dev
+
+git clone https://github.com/BerkeleyAutomation/python-fcl.git
+cd python-fcl
+sudo python3 setup.py install
+sudo pip3 install urchin --break-system-packages
 
 
 
