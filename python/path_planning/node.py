@@ -10,7 +10,7 @@ def axis_angle_to_quaternion(axis_angle):
         return [0, 0, 0, 1]
     axis = axis_angle / theta
     x, y, z = axis
-    theta = theta * 180.0 / np.pi
+    theta = theta * np.pi / 180.0 
     s = np.sin(theta / 2.0)
     return [x * s, y * s, z * s, np.cos(theta / 2.0)]
 
@@ -83,7 +83,7 @@ def create_cube(xyz_rvec=[0,0,0,0,0,0], scale=[1,1,1]):
     mat = dp.xyzabc_to_T(xyz_rvec)
 
     # FCL
-    box = fcl.Box(*scale)
+    box = fcl.Box(*[scale[0],scale[1],scale[2]])
     fcl_obj = fcl.CollisionObject(box, tf)
 
     # PyBullet

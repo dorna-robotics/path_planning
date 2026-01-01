@@ -105,11 +105,14 @@ class Planner:
 		self.all_objects = [] #to create bvh
 		self.dynamic_objects = [] #to update bvh
 
+		self.scene_map = {}
 		#placing scene objects
 		for obj in self.scene:
-			self.root_node.collisions.append(obj.fcl_object)
+			self.root_node.collisions.append(obj)
 			self.all_objects.append(obj.fcl_object)
 			self.all_visuals.append(obj)
+			self.scene_map[id(obj.fcl_shape)] = obj
+
 
 		#placing tool objects
 		for obj in self.load:
@@ -161,9 +164,10 @@ class Planner:
 
 
 		if len(j)>6:
-			aux_offset = aux_offset + j[6] * self.aux_dir_1
+			aux_offset = aux_offset + j[6] * self.aux_dir_1[:3]
+
 		if len(j)>7:
-			aux_offset = aux_offset + j[7] * self.aux_dir_2
+			aux_offset = aux_offset + j[7] * self.aux_dir_2[:3]
 
 		base_mat[0, 3] += aux_offset[ 0]
 		base_mat[1, 3] += aux_offset[ 1]
@@ -190,6 +194,7 @@ class Planner:
 			coll_geom_0 = contact.o1
 			coll_geom_1 = contact.o2
 
+
 			prnt0 = None
 			prnt1 = None
 
@@ -204,6 +209,7 @@ class Planner:
 				num_parents = num_parents + 1
 
 
+
 			#this collision has nothing to do with robot
 			if num_parents == 0:
 				continue 
@@ -216,6 +222,7 @@ class Planner:
 			if num_parents == 2:
 				if prnt0.parent == prnt1 or prnt1.parent == prnt0 or prnt0 == prnt1:
 					continue
+
 
 			#if here, meaning that a valid collision has been detected
 			tmp_res = ['scene' if prnt0 is None else prnt0.name, 'scene' if prnt1 is None else prnt1.name]
@@ -258,7 +265,6 @@ class Planner:
 								})	
 
 		dof = len(start)
-
 		path = core.plan(
 						start_joint   = np.array(start, dtype=float),
 						goal_joint    = np.array(goal, dtype=float),

@@ -35,6 +35,7 @@
 #include <pybind11/numpy.h>
 #include <Eigen/Core>
 
+
 namespace py = pybind11;
 namespace fs = std::filesystem;
 
@@ -97,7 +98,7 @@ struct PoseAA {
         T.translation() = t;
         double angle = rvec.norm() * PI / 180.0;
         if (angle > 1e-12) {
-            Eigen::Vector3d axis = rvec / angle;
+            Eigen::Vector3d axis = rvec.normalized();
             T.linear() = Eigen::AngleAxisd(angle, axis).toRotationMatrix();
         } else {
             T.linear().setIdentity();
@@ -160,6 +161,7 @@ inline Eigen::VectorXd stateToQ(const ompl::base::State* s, std::size_t dof) {
 // ---------------------- Validity checker ----------------------
 class RobotValidityChecker : public ob::StateValidityChecker {
 public:    
+
     // runtime buffers
     RobotValidityChecker(const ob::SpaceInformationPtr& si,
                          size_t dof,
@@ -228,11 +230,14 @@ public:
 
     }
 
+
     bool isValid(const ob::State* s) const override {
+
         // 1) Extract q
         Eigen::VectorXd q(dof_);
         const auto* rv = s->as<ob::RealVectorStateSpace::StateType>();
-        for (size_t i = 0; i < dof_; ++i) q[i] = (*rv)[i];
+
+        for (size_t i = 0; i < dof_; ++i){ q[i] = (*rv)[i];}
 
         // 2) FK: get world transform for each link
         linkWorld_.assign(linkGeoms_.size(), Eigen::Isometry3d::Identity());
@@ -241,6 +246,7 @@ public:
             // Defensive: FK must return same count
             return false;
         }
+
 
 
         // 4) Build robot link FCL objects at world pose
@@ -256,6 +262,8 @@ public:
                 linkOfObj_.push_back(i);
             }
         }
+
+
 
         // 5) Build load and gripper objects (attached to last link) call all of the load
         loadObjs_.clear();
@@ -274,20 +282,26 @@ public:
             loadObjs_.push_back(std::move(obj));
         }
 
+
+
         // 6) Collision checks:
         //    - Robot links vs environment
+
         for (auto& linkObj : linkObjs_) {
+
             for (auto& envObj : envObjs_) {
+
                 if (collide(linkObj, envObj)) return false;
             }
         }
+
         //    - Load vs environment
         for (auto& loadObj : loadObjs_) {
             for (auto& envObj : envObjs_) {
                 if (collide(loadObj, envObj)) return false;
             }
         }
-        
+
         // self-collision: skip same-link & adjacent links
         auto isAdjacent = [&](size_t a, size_t b) {
             if (a > b) std::swap(a,b);
@@ -330,10 +344,11 @@ public:
             Eigen::Vector3d ee = T_ee.linear().col(2); // tool X
             if (abs(ee.dot(desired_)) > cos_tol_) return false;
             */
+    
         }
-
         return true; // valid
     }
+
 
 private:
     size_t dof_;
@@ -491,6 +506,7 @@ public:
         // Densify
         pg.interpolate();
 
+
         // Extract
         out.path.reserve(pg.getStateCount());
         for (size_t i = 0; i < pg.getStateCount(); ++i) {
@@ -545,6 +561,7 @@ extractLinkCollisionsFromURDF(const urdf::ModelInterfaceSharedPtr& model,
             out[i].push_back(std::move(lc));
         }
     }
+ 
     return out;
 }
 
@@ -560,21 +577,33 @@ struct InputShape {
 
 Eigen::VectorXd radiansToDegrees6(const Eigen::VectorXd& x) {
     Eigen::VectorXd result = x;  // copy so original isn't modified
-    for (int i = 0; i < 6; ++i) {
+    const int n = static_cast<int>(result.size());
+
+    for (int i = 0; i < std::min(6, n); ++i) {
         result[i] = x[i] * 180.0 / PI;
     }
+
+    if (n >= 7) result[6] = x[6] * 100.0;
+    if (n >= 8) result[7] = x[7] * 100.0;
+
     return result;
 }
 
-// Convert first 6 elements from degrees → radians
+// Convert first 6 elements from degrees -> radians.
+// If x has 7th/8th elements (rail axes), scale them by 0.001x.
 Eigen::VectorXd degreesToRadians6(const Eigen::VectorXd& x) {
     Eigen::VectorXd result = x;
-    for (int i = 0; i < 6; ++i) {
+    const int n = static_cast<int>(result.size());
+
+    for (int i = 0; i < std::min(6, n); ++i) {
         result[i] = x[i] * PI / 180.0;
     }
+
+    if (n >= 7) result[6] = x[6] * 0.01;
+    if (n >= 8) result[7] = x[7] * 0.01;
+
     return result;
 }
-
 
 static std::vector<Eigen::VectorXd> run_planner(
     Eigen::VectorXd& q_start,
@@ -643,6 +672,7 @@ static std::vector<Eigen::VectorXd> run_planner(
         bin.pose.rvec  = Eigen::Vector3d(o.pose(3), o.pose(4), o.pose(5));
         out_scene.push_back(bin);
     }
+
     //load generation
     for(int i=0; i<load.size(); i++){
         ObjectInstance bin;
@@ -684,10 +714,10 @@ static std::vector<Eigen::VectorXd> run_planner(
         //aplying aux dirs
         Eigen::Isometry3d aux_base = base;
         if(q.size()>=7){
-            aux_base.translate(aux_dir_1 * q[6]);
+            aux_base.translate(aux_dir_1 * q[6] * 100.);
         }
         if(q.size()>=8){
-            aux_base.translate(aux_dir_2 * q[7]);
+            aux_base.translate(aux_dir_2 * q[7] * 100.);
         }
 
         Eigen::VectorXd q6;
