@@ -39,6 +39,7 @@ class unified_object:
         self.fcl_shape = fcl_shape
         self.pose = pose
         self.scale = scale
+        self.gt = np.eye(4)
 
 #some good functions
 
@@ -67,11 +68,13 @@ def fcl_transform_from_matrix(matrix4x4):
     else:
         raise ImportError("No suitable Transform class found in fcl module.")
 
-def create_cube(xyz_rvec=[0,0,0,0,0,0], scale=[1,1,1]):
+def create_cube(xyz_rvec=[0,0,0,0,0,0], scale=[1000,1000,1000]):
     
     xyz_rvec[0] = xyz_rvec[0] / 1000
     xyz_rvec[1] = xyz_rvec[1] / 1000
     xyz_rvec[2] = xyz_rvec[2] / 1000
+
+    scale = np.array(scale).tolist()
 
     scale[0] = scale[0]/1000
     scale[1] = scale[1]/1000
@@ -195,5 +198,6 @@ class Node:
         if gt is None:
             gt = self.get_global_transform()
         for coll_obj in self.collisions:
-            new_tf = fcl_transform_from_matrix(gt @ coll_obj.mat)
+            coll_obj.gt = gt @ coll_obj.mat
+            new_tf = fcl_transform_from_matrix(coll_obj.gt)
             coll_obj.fcl_object.setTransform(new_tf)

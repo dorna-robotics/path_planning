@@ -8,16 +8,10 @@ from . import urdf
 from . import node
 
 def mm_to_m_6(xyzabc):
-	xyzabc[0] = xyzabc[0]/1000
-	xyzabc[1] = xyzabc[1]/1000
-	xyzabc[2] = xyzabc[2]/1000
-	return xyzabc
+	return (np.array(xyzabc)/1000).tolist()
 
 def m_to_mm_6(xyzabc):
-	xyzabc[0] = xyzabc[0]*1000
-	xyzabc[1] = xyzabc[1]*1000
-	xyzabc[2] = xyzabc[2]*1000
-	return xyzabc
+	return (np.array(xyzabc)*1000).tolist()
 
 class Planner:
 
@@ -69,6 +63,8 @@ class Planner:
 			self.frame_in_world = frame_in_world
 		if aux_dir is not None:
 			self.aux_dir = aux_dir
+			self.aux_dir = [[self.aux_dir[0][0]/1000, self.aux_dir[0][1]/1000, self.aux_dir[0][2]/1000],
+				[self.aux_dir[1][0]/1000, self.aux_dir[1][1]/1000, self.aux_dir[1][2]/1000]]
 		if aux_limit is not None:
 			self.aux_limit = aux_limit
 		if gripper is not None:
@@ -91,8 +87,7 @@ class Planner:
 		self.tool = mm_to_m_6(self.tool)
 		self.base_in_world = mm_to_m_6(self.base_in_world)
 		self.frame_in_world = mm_to_m_6(self.frame_in_world )
-		self.aux_dir = [[self.aux_dir[0][0]/1000, self.aux_dir[0][1]/1000, self.aux_dir[0][2]/1000],
-						[self.aux_dir[1][0]/1000, self.aux_dir[1][1]/1000, self.aux_dir[1][2]/1000]]
+
 
 		#rebuilding initialization stuff
 		self.root_node = node.Node("root")
@@ -118,7 +113,7 @@ class Planner:
 		for obj in self.load:
 			#create new obj
 			new_pose = m_to_mm_6(pose.T_to_xyzabc(np.matrix(pose.xyzabc_to_T(self.tool)) @ np.matrix(pose.xyzabc_to_T(mm_to_m_6(obj.pose)))))
-			new_obj = Planner.create_cube(new_pose, [obj.scale[0]*1000, obj.scale[1]*1000, obj.scale[2]*1000])
+			new_obj = Planner.create_cube(new_pose, [obj.scale[0], obj.scale[1], obj.scale[2]])
 
 			self.robot.link_nodes["j6_link"].collisions.append(new_obj)
 			self.robot.all_objs.append(new_obj)
@@ -147,7 +142,7 @@ class Planner:
 		self.aux_dir_2 = self.base_in_world_mat @ np.array([self.aux_dir[1][0], self.aux_dir[1][1], self.aux_dir[1][2], 0])
 
 
-	def check_collision(self, joint):
+	def check_collision(self, joint, internal=True):
 
 		#check limits
 		for i in range(len(joint)):
@@ -173,8 +168,22 @@ class Planner:
 		base_mat[1, 3] += aux_offset[ 1]
 		base_mat[2, 3] += aux_offset[ 2]
 
+
+
 		self.robot.set_joint_values([j[0],j[1],j[2],j[3],j[4],j[5]], self.frame_in_world_inv @  base_mat) 
 
+		"""	
+		st = ""
+		for o in self.all_visuals:
+			pp = pose.T_to_xyzabc(o.gt)
+			if pp[0] == 0.0 and pp[1] == 0.0 and pp[2] ==0.0:
+				pp = pose.T_to_xyzabc(o.mat)
+
+			st += '{"pose":' + str(pp) + ',"scale":'+str(o.scale) + "},"
+		
+		print(st)
+		"""
+		
 		#update dynamics
 		for do in self.dynamic_objects:
 			self.manager.update(do.fcl_object)
@@ -214,9 +223,10 @@ class Planner:
 			if num_parents == 0:
 				continue 
 
-			#this is external collision, good to go
-			if num_parents == 1: 
-				pass
+			#this is external collision, good to go if internal = false
+			if num_parents == 1:
+				if  internal:
+					continue
 
 			#this is internal collision, needs to be filtered
 			if num_parents == 2:
