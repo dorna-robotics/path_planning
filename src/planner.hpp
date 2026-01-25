@@ -9,6 +9,7 @@
 #include <ompl/geometric/planners/rrt/RRTstar.h>
 #include <ompl/geometric/planners/prm/PRMstar.h>
 #include <ompl/geometric/PathSimplifier.h>
+#include <ompl/util/RandomNumbers.h>
 
 
 
@@ -618,8 +619,13 @@ static std::vector<Eigen::VectorXd> run_planner(
     const Eigen::Matrix<double,6,1>& frame_in_world,
     const std::array<Eigen::Vector3d,2>& aux_dir,
     double time_limit_sec,
-    std::string pkg_dir)
+    std::string pkg_dir,
+    int seed,
+    bool has_camera)
 {
+    //setting the seed
+    ompl::RNG::setSeed(seed);
+
     g_pkg_dir = pkg_dir;
 
     const int DOF = static_cast<int>(q_start.size());
@@ -636,7 +642,8 @@ static std::vector<Eigen::VectorXd> run_planner(
     };
 
     // 1) Build FK
-    const std::string urdfRel = "urdf/dorna_ta.urdf";
+    const std::string urdfRel = (has_camera)?"urdf/dorna_ta_camera.urdf":"urdf/dorna_ta.urdf";
+
     URDFFK urdf_fk(resource_path(urdfRel), linkNames);
 
     //Building limit

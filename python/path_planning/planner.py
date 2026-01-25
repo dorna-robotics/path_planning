@@ -26,6 +26,7 @@ class Planner:
 		frame_in_world=None,			# [x,y,z,rx,ry,rz]
 		aux_dir=None,				   # [[...],[...]]
 		aux_limit=None,				 # [[min,max],[min,max]]
+		has_camera=None,
 	):
 		self.tool = [0, 0, 0, 0, 0, 0] if tool is None else tool
 		self.gripper = [] if gripper is None else gripper
@@ -33,9 +34,10 @@ class Planner:
 		self.scene = [] if scene is None else scene
 		self.base_in_world = [0, 0, 0, 0, 0, 0] if base_in_world is None else base_in_world
 		self.frame_in_world = [0, 0, 0, 0, 0, 0] if frame_in_world is None else frame_in_world
-		self.aux_dir = [[0, 0, 0], [0, 0, 0]] if aux_dir is None else aux_dir
+		self.aux_dir = [[0, 0, 0], [0, 0, 0]] if aux_dir is None else [[self.aux_dir[0][0]/1000, self.aux_dir[0][1]/1000, self.aux_dir[0][2]/1000],
+				[self.aux_dir[1][0]/1000, self.aux_dir[1][1]/1000, self.aux_dir[1][2]/1000]]
 		self.aux_limit = [[-1, 1], [-1, 1]] if aux_limit is None else aux_limit
-
+		self.has_camera = False if has_camera is None else has_camera
 		self.rebuild()
 
 	def update(
@@ -48,7 +50,8 @@ class Planner:
 		frame_in_world=None,
 		aux_dir=None,
 		aux_limit=None,
-		gripper=None
+		gripper=None,
+		has_camera=None
 	):
 		"""Update any subset of stored parameters."""
 		if tool is not None:
@@ -69,6 +72,9 @@ class Planner:
 			self.aux_limit = aux_limit
 		if gripper is not None:
 			self.gripper = gripper
+		if has_camera is not None:
+			self.has_camera = has_camera
+
 		self.rebuild()
 
 	def rebuild(self):
@@ -92,7 +98,7 @@ class Planner:
 		#rebuilding initialization stuff
 		self.root_node = node.Node("root")
 
-		urdf_path = res = files("path_planning") / "resources" / "urdf" / "dorna_ta.urdf"
+		urdf_path = res = files("path_planning") / "resources" / "urdf" / ("dorna_ta.urdf" if not self.has_camera else "dorna_ta_camera.urdf")
 
 		self.robot = urdf.urdf_robot(urdf_path, {}, self.root_node)
 
@@ -248,7 +254,7 @@ class Planner:
 		return node.create_cube(xyz_rvec=pose, scale=scale)
 
 
-	def plan(self, start, goal):
+	def plan(self, start, goal, seed=1234):
 		scene_list = []
 		gripper_list = []
 		load_list = []
@@ -287,6 +293,8 @@ class Planner:
 						base_in_world = np.array(self.base_in_world, dtype=float),
 						frame_in_world= np.array(self.frame_in_world, dtype=float),
 						aux_dir       = self.aux_dir,
-						time_limit_sec= 2.0
+						time_limit_sec= 2.0,
+						seed 		  = seed,
+						has_camera	  = self.has_camera
 						)
 		return path

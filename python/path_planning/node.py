@@ -199,5 +199,7 @@ class Node:
             gt = self.get_global_transform()
         for coll_obj in self.collisions:
             coll_obj.gt = gt @ coll_obj.mat
+            print(',{"pose":', dp.T_to_xyzabc(coll_obj.gt), ',"scale":',coll_obj.scale,"}")
+
             new_tf = fcl_transform_from_matrix(coll_obj.gt)
             coll_obj.fcl_object.setTransform(new_tf)
