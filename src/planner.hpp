@@ -17,6 +17,7 @@
 
 #include <fcl/fcl.h>
 #include <Eigen/Dense>
+#include <cmath>
 
 #include <functional>
 #include <iostream>
@@ -173,9 +174,13 @@ public:
                          std::vector<ObjectInstance> gripper,
                          Eigen::Isometry3d tcp,
                          Eigen::Isometry3d frame,
-                         size_t lastLinkIndex)
+                         size_t lastLinkIndex,
+                         bool _gravity,
+                         float _gravity_thr)
         : ob::StateValidityChecker(si),
           dof_(dof),
+          gravity(_gravity),
+          gravity_thr(_gravity_thr),
           linkGeoms_(std::move(linkGeoms)),
           fk_(std::move(fk)),
           scene_(std::move(scene)),
@@ -331,28 +336,27 @@ public:
             }
         }
 
+        if(gravity)
         {
             //ee constrain 
-            /*
-            Eigen::Vector3d desired_ = Eigen::Vector3d(0.0,0.0,1.0);
-            double cos_tol_ = 0.05;
+            Eigen::Vector3d desired_ = Eigen::Vector3d(0.0,0.0,-1.0);
+            double cos_tol_ = std::cos(gravity_thr * PI / 180.0);
 
-            std::vector<Eigen::Isometry3d> linkWorld;
-            linkWorld.reserve(6);
-            fk_cb(stateToQ(s,6), linkWorld);
+            Eigen::Isometry3d T_tool = Tflange * tcp_;
 
-            Eigen::Isometry3d T_ee = linkWorld.at(6);
-            Eigen::Vector3d ee = T_ee.linear().col(2); // tool X
-            if (abs(ee.dot(desired_)) > cos_tol_) return false;
-            */
-    
+            Eigen::Vector3d ee = T_tool.linear().col(2); // tool Z
+            if (ee.dot(desired_) < cos_tol_) return false;
+        
         }
+        
         return true; // valid
     }
 
 
 private:
     size_t dof_;
+    bool gravity;
+    float gravity_thr;
     std::vector<LinkCollisions> linkGeoms_;
     FKCallback fk_;
     std::vector<ObjectInstance> scene_;
@@ -402,7 +406,9 @@ public:
                       Eigen::Isometry3d tcp,
                       Eigen::Isometry3d frame,
                       PlanOptions opts = {},
-                      PlannerConfig pcfg = {})
+                      PlannerConfig pcfg = {},
+                      bool gravity = false,
+                      float gravity_thr = 1.0)
         : dof_(dof), opts_(opts), cfg_(pcfg)
     {
         // 1) Space + bounds
@@ -425,7 +431,7 @@ public:
         // 2) Validity checker (FCL env + load)
         auto vc = std::make_shared<RobotValidityChecker>(
             si_, dof_, std::move(linkGeoms), std::move(fk),
-            std::move(scene), std::move(load), std::move(gripper), tcp, frame, lastLinkIndex);
+            std::move(scene), std::move(load), std::move(gripper), tcp, frame, lastLinkIndex, gravity, gravity_thr);
         ss_->setStateValidityChecker(vc);
 
         // 3) Planner
@@ -621,10 +627,13 @@ static std::vector<Eigen::VectorXd> run_planner(
     double time_limit_sec,
     std::string pkg_dir,
     int seed,
-    bool has_camera)
+    bool has_camera,
+    bool gravity,
+    float gravity_thr)
 {
     //setting the seed
     ompl::RNG::setSeed(seed);
+    ompl::msg::setLogLevel(ompl::msg::LOG_WARN);
 
     g_pkg_dir = pkg_dir;
 
@@ -746,7 +755,7 @@ static std::vector<Eigen::VectorXd> run_planner(
     cfg.range = 0.08;
     cfg.goalBias = 0.05;
 
-    JointSpacePlanner planner(DOF, limits, links, lastLinkIndex, fk_cb, out_scene, out_load, out_gripper, tool_iso, frame,  opts, cfg);
+    JointSpacePlanner planner(DOF, limits, links, lastLinkIndex, fk_cb, out_scene, out_load, out_gripper, tool_iso, frame,  opts, cfg, gravity, gravity_thr);
 
     auto result = planner.plan(q_start, q_goal);
     if (!result.solved) { std::vector<Eigen::VectorXd> empty_path; return  empty_path;}

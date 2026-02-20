@@ -26,7 +26,7 @@ class Planner:
 		frame_in_world=None,			# [x,y,z,rx,ry,rz]
 		aux_dir=None,				   # [[...],[...]]
 		aux_limit=None,				 # [[min,max],[min,max]]
-		has_camera=None,
+		has_camera=None
 	):
 		self.tool = [0, 0, 0, 0, 0, 0] if tool is None else tool
 		self.gripper = [] if gripper is None else gripper
@@ -254,7 +254,7 @@ class Planner:
 		return node.create_cube(xyz_rvec=pose, scale=scale)
 
 
-	def plan(self, start, goal, seed=1234):
+	def plan(self, start, goal, seed=1234, gravity=False, gravity_thr = 1.0):
 		scene_list = []
 		gripper_list = []
 		load_list = []
@@ -295,6 +295,8 @@ class Planner:
 						aux_dir       = self.aux_dir,
 						time_limit_sec= 2.0,
 						seed 		  = seed,
-						has_camera	  = self.has_camera
+						has_camera	  = self.has_camera,
+						gravity		  = gravity,
+						gravity_thr	  = gravity_thr
 						)
 		return path

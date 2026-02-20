@@ -104,7 +104,9 @@ PYBIND11_MODULE(core, m) {
        py::object aux_dir,
        double time_limit_sec,
        int seed,
-       bool has_camera)
+       bool has_camera,
+       bool gravity,
+       float gravity_thr)
     {
       if (start_joint.size() == 0) throw std::runtime_error("start_joint is empty");
       if (goal_joint.size()  != start_joint.size() || limit_n.size()  != start_joint.size() || limit_p.size()  != start_joint.size())
@@ -116,7 +118,7 @@ PYBIND11_MODULE(core, m) {
       auto aux     = parse_aux(aux_dir);
 
       auto wps = run_planner(start_joint, goal_joint, limit_n, limit_p, scene_v, load_v, gripper_v,
-                             tool, base_in_world, frame_in_world, aux, time_limit_sec, g_pkg_dir, seed, has_camera);
+                             tool, base_in_world, frame_in_world, aux, time_limit_sec, g_pkg_dir, seed, has_camera, gravity, gravity_thr);
       return to_numpy(wps);
     },
     py::arg("start_joint"),
@@ -133,6 +135,8 @@ PYBIND11_MODULE(core, m) {
     py::arg("time_limit_sec") = 1.0,
     py::arg("seed") = 1234,
     py::arg("has_camera") = false,
+    py::arg("gravity") = false,
+    py::arg("gravity_thr") = 1.0,
     R"doc(
 plan(start_joint=..., goal_joint=..., scene=[{pose,scale,type},...], load=[...], gripper = [...]
      tool=[6], base_in_world=[6], frame_in_world=[6], aux_dir=[[3],[3]], time_limit_sec=1.0) -> np.ndarray (N, DOF)
