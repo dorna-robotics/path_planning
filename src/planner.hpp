@@ -632,7 +632,7 @@ static std::vector<Eigen::VectorXd> run_planner(
     float gravity_thr)
 {
     //setting the seed
-    ompl::RNG::setSeed(seed);
+    //ompl::RNG::setSeed(seed);
     ompl::msg::setLogLevel(ompl::msg::LOG_WARN);
 
     g_pkg_dir = pkg_dir;
