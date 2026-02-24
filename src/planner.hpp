@@ -35,7 +35,6 @@
 #include <pybind11/eigen.h>
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
-#include <pybind11/iostream.h>
 #include <Eigen/Core>
 
 
@@ -346,7 +345,7 @@ public:
             double cos_tol_ = std::cos(gravity_thr * PI / 180.0);
 
             Eigen::Vector3d ee = Tflange.linear() * gravity_vec;
-            py::print("\n check here:", ee.x(), ",", ee.y(), ",", ee.z());
+           // py::print("\n check here:", ee.x(), ",", ee.y(), ",", ee.z());
             if (ee.dot(desired_) < cos_tol_) return false;
         
         }
