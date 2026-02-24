@@ -106,6 +106,7 @@ PYBIND11_MODULE(core, m) {
        int seed,
        bool has_camera,
        bool gravity,
+       Eigen::Vector3d& gravity_vec,
        float gravity_thr)
     {
       if (start_joint.size() == 0) throw std::runtime_error("start_joint is empty");
@@ -118,7 +119,7 @@ PYBIND11_MODULE(core, m) {
       auto aux     = parse_aux(aux_dir);
 
       auto wps = run_planner(start_joint, goal_joint, limit_n, limit_p, scene_v, load_v, gripper_v,
-                             tool, base_in_world, frame_in_world, aux, time_limit_sec, g_pkg_dir, seed, has_camera, gravity, gravity_thr);
+                             tool, base_in_world, frame_in_world, aux, time_limit_sec, g_pkg_dir, seed, has_camera, gravity, gravity_vec, gravity_thr);
       return to_numpy(wps);
     },
     py::arg("start_joint"),
@@ -136,6 +137,7 @@ PYBIND11_MODULE(core, m) {
     py::arg("seed") = 1234,
     py::arg("has_camera") = false,
     py::arg("gravity") = false,
+    py::arg("gravity_vec"),
     py::arg("gravity_thr") = 1.0,
     R"doc(
 plan(start_joint=..., goal_joint=..., scene=[{pose,scale,type},...], load=[...], gripper = [...]

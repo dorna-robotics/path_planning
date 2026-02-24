@@ -35,6 +35,7 @@
 #include <pybind11/eigen.h>
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
+#include <pybind11/iostream.h>
 #include <Eigen/Core>
 
 
@@ -173,6 +174,7 @@ public:
                          std::vector<ObjectInstance> load,
                          std::vector<ObjectInstance> gripper,
                          Eigen::Isometry3d tcp,
+                         Eigen::Vector3d _gravity_vec,
                          Eigen::Isometry3d frame,
                          size_t lastLinkIndex,
                          bool _gravity,
@@ -189,6 +191,7 @@ public:
           lastLinkIndex_(lastLinkIndex) {
         
         tcp_ = tcp;
+        gravity_vec = _gravity_vec;
 
         for (size_t i = 0; i + 1 < linkGeoms_.size(); ++i)
             adjacentPairs_.emplace_back(i, i+1);
@@ -342,9 +345,8 @@ public:
             Eigen::Vector3d desired_ = Eigen::Vector3d(0.0,0.0,-1.0);
             double cos_tol_ = std::cos(gravity_thr * PI / 180.0);
 
-            Eigen::Isometry3d T_tool = Tflange * tcp_;
-
-            Eigen::Vector3d ee = T_tool.linear().col(2); // tool Z
+            Eigen::Vector3d ee = Tflange.linear() * gravity_vec;
+            py::print("\n check here:", ee.x(), ",", ee.y(), ",", ee.z());
             if (ee.dot(desired_) < cos_tol_) return false;
         
         }
@@ -364,6 +366,7 @@ private:
     std::vector<ObjectInstance> gripperLocal_;
     size_t lastLinkIndex_;
     Eigen::Isometry3d tcp_;
+    Eigen::Vector3d gravity_vec;
 
     // prebuilt geoms
     std::vector<std::shared_ptr<fcl::CollisionGeometryd>> envGeoms_;
@@ -404,6 +407,7 @@ public:
                       std::vector<ObjectInstance> load,
                       std::vector<ObjectInstance> gripper,
                       Eigen::Isometry3d tcp,
+                      Eigen::Vector3d gravity_vec,
                       Eigen::Isometry3d frame,
                       PlanOptions opts = {},
                       PlannerConfig pcfg = {},
@@ -431,7 +435,7 @@ public:
         // 2) Validity checker (FCL env + load)
         auto vc = std::make_shared<RobotValidityChecker>(
             si_, dof_, std::move(linkGeoms), std::move(fk),
-            std::move(scene), std::move(load), std::move(gripper), tcp, frame, lastLinkIndex, gravity, gravity_thr);
+            std::move(scene), std::move(load), std::move(gripper), tcp, gravity_vec, frame, lastLinkIndex, gravity, gravity_thr);
         ss_->setStateValidityChecker(vc);
 
         // 3) Planner
@@ -629,6 +633,7 @@ static std::vector<Eigen::VectorXd> run_planner(
     int seed,
     bool has_camera,
     bool gravity,
+    const Eigen::Vector3d& gravity_vec,
     float gravity_thr)
 {
     //setting the seed
@@ -755,7 +760,7 @@ static std::vector<Eigen::VectorXd> run_planner(
     cfg.range = 0.08;
     cfg.goalBias = 0.05;
 
-    JointSpacePlanner planner(DOF, limits, links, lastLinkIndex, fk_cb, out_scene, out_load, out_gripper, tool_iso, frame,  opts, cfg, gravity, gravity_thr);
+    JointSpacePlanner planner(DOF, limits, links, lastLinkIndex, fk_cb, out_scene, out_load, out_gripper, tool_iso, gravity_vec, frame,  opts, cfg, gravity, gravity_thr);
 
     auto result = planner.plan(q_start, q_goal);
     if (!result.solved) { std::vector<Eigen::VectorXd> empty_path; return  empty_path;}

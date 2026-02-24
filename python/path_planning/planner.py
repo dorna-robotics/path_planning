@@ -254,7 +254,7 @@ class Planner:
 		return node.create_cube(xyz_rvec=pose, scale=scale)
 
 
-	def plan(self, start, goal, seed=1234, gravity=False, gravity_thr = 1.0):
+	def plan(self, start, goal, seed=1234, gravity=False, gravity_vec=[0,0,1], gravity_thr = 1.0):
 		scene_list = []
 		gripper_list = []
 		load_list = []
@@ -281,6 +281,10 @@ class Planner:
 								})	
 
 		dof = len(start)
+		
+		if not gravity :
+			gravity_vec = [0,0,1]
+
 		path = core.plan(
 						start_joint   = np.array(start, dtype=float),
 						goal_joint    = np.array(goal, dtype=float),
@@ -297,6 +301,7 @@ class Planner:
 						seed 		  = seed,
 						has_camera	  = self.has_camera,
 						gravity		  = gravity,
+						gravity_vec	  = np.array(gravity_vec, dtype=float).reshape(3, 1),
 						gravity_thr	  = gravity_thr
 						)
 		return path
