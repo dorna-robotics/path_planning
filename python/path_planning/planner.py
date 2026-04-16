@@ -34,8 +34,8 @@ class Planner:
 		self.scene = [] if scene is None else scene
 		self.base_in_world = [0, 0, 0, 0, 0, 0] if base_in_world is None else base_in_world
 		self.frame_in_world = [0, 0, 0, 0, 0, 0] if frame_in_world is None else frame_in_world
-		self.aux_dir = [[0, 0, 0], [0, 0, 0]] if aux_dir is None else [[self.aux_dir[0][0]/1000, self.aux_dir[0][1]/1000, self.aux_dir[0][2]/1000],
-				[self.aux_dir[1][0]/1000, self.aux_dir[1][1]/1000, self.aux_dir[1][2]/1000]]
+		self.aux_dir = [[0, 0, 0], [0, 0, 0]] if aux_dir is None else [[aux_dir[0][0]/1000, aux_dir[0][1]/1000, aux_dir[0][2]/1000],
+				[aux_dir[1][0]/1000, aux_dir[1][1]/1000, aux_dir[1][2]/1000]]
 		self.aux_limit = [[-1, 1], [-1, 1]] if aux_limit is None else aux_limit
 		self.has_camera = False if has_camera is None else has_camera
 		self.rebuild()
