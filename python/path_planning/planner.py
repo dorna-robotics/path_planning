@@ -26,7 +26,8 @@ class Planner:
 		frame_in_world=None,			# [x,y,z,rx,ry,rz]
 		aux_dir=None,				   # [[...],[...]]
 		aux_limit=None,				 # [[min,max],[min,max]]
-		has_camera=None
+		has_camera=None,
+		dorna=None
 	):
 		self.tool = [0, 0, 0, 0, 0, 0] if tool is None else tool
 		self.gripper = [] if gripper is None else gripper
@@ -38,6 +39,8 @@ class Planner:
 				[aux_dir[1][0]/1000, aux_dir[1][1]/1000, aux_dir[1][2]/1000]]
 		self.aux_limit = [[-1, 1], [-1, 1]] if aux_limit is None else aux_limit
 		self.has_camera = False if has_camera is None else has_camera
+		self.aux_limit = [[-1, 1], [-1, 1]] if aux_limit is None else aux_limit
+		self.dorna = Dorna() if dorna is None else dorna
 		self.rebuild()
 
 	def update(
@@ -80,7 +83,6 @@ class Planner:
 	def rebuild(self):
 
 		#limits
-		self.dorna = Dorna()
 		if hasattr(self.dorna.kinematic, 'limits'):
 			limits = self.dorna.kinematic.limits
 		else:
