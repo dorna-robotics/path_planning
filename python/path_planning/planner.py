@@ -54,7 +54,8 @@ class Planner:
 		aux_dir=None,
 		aux_limit=None,
 		gripper=None,
-		has_camera=None
+		has_camera=None,
+		dorna=None
 	):
 		"""Update any subset of stored parameters."""
 		if tool is not None:
@@ -77,6 +78,8 @@ class Planner:
 			self.gripper = gripper
 		if has_camera is not None:
 			self.has_camera = has_camera
+		if dorna is not None:
+			self.dorna = dorna
 
 		self.rebuild()
 
