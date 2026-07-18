@@ -259,7 +259,7 @@ class Planner:
 		return node.create_cube(xyz_rvec=pose, scale=scale)
 
 
-	def plan(self, start, goal, seed=1234, gravity=False, gravity_vec=[0,0,1], gravity_thr = 1.0):
+	def plan(self, start, goal, seed=1234, gravity=False, gravity_vec=[0,0,1], gravity_thr = 1.0, planner="rrtconnect", time_limit_sec=2.0):
 		scene_list = []
 		gripper_list = []
 		load_list = []
@@ -302,11 +302,12 @@ class Planner:
 						base_in_world = np.array(self.base_in_world, dtype=float),
 						frame_in_world= np.array(self.frame_in_world, dtype=float),
 						aux_dir       = self.aux_dir,
-						time_limit_sec= 2.0,
+						time_limit_sec= time_limit_sec,
 						seed 		  = seed,
 						has_camera	  = self.has_camera,
 						gravity		  = gravity,
 						gravity_vec	  = np.array(gravity_vec, dtype=float).reshape(3, 1),
-						gravity_thr	  = gravity_thr
+						gravity_thr	  = gravity_thr,
+						planner		  = planner
 						)
 		return path

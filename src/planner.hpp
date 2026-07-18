@@ -8,6 +8,9 @@
 #include <ompl/geometric/planners/rrt/RRTConnect.h>
 #include <ompl/geometric/planners/rrt/RRTstar.h>
 #include <ompl/geometric/planners/prm/PRMstar.h>
+#include <ompl/geometric/planners/informedtrees/BITstar.h>
+#include <ompl/geometric/planners/informedtrees/AITstar.h>
+#include <ompl/geometric/planners/informedtrees/ABITstar.h>
 #include <ompl/geometric/PathSimplifier.h>
 #include <ompl/util/RandomNumbers.h>
 
@@ -142,7 +145,7 @@ static bool collide(const fcl::CollisionObjectd& a, const fcl::CollisionObjectd&
 }
 
 
-enum class PlannerKind { RRTConnect, RRTstar, PRMstar };
+enum class PlannerKind { RRTConnect, RRTstar, PRMstar, BITstar, AITstar, ABITstar };
 
 struct PlannerConfig {
     PlannerKind kind = PlannerKind::RRTConnect;
@@ -469,6 +472,18 @@ public:
                 pl = r;
                 break;
             }
+            case PlannerKind::BITstar: {
+                pl = std::make_shared<og::BITstar>(si_);
+                break;
+            }
+            case PlannerKind::AITstar: {
+                pl = std::make_shared<og::AITstar>(si_);
+                break;
+            }
+            case PlannerKind::ABITstar: {
+                pl = std::make_shared<og::ABITstar>(si_);
+                break;
+            }
         }
         // PlanOptions.range overrides where applicable
         if (opts_.range && *opts_.range > 0.0) {
@@ -499,7 +514,10 @@ public:
 
         // Solve
         const double t = (opts_.timeSeconds > 0.0 ? opts_.timeSeconds : 1.0);
-        const bool solved = ss_->solve(t);
+        // EXACT only — an APPROXIMATE status is a path that does NOT
+        // reach the goal; executing it would leave the robot at a
+        // near-miss pose while the caller assumes it arrived.
+        const bool solved = (ss_->solve(t) == ob::PlannerStatus::EXACT_SOLUTION);
 
         PlanResult out;
         out.solved = solved;
@@ -633,7 +651,8 @@ static std::vector<Eigen::VectorXd> run_planner(
     bool has_camera,
     bool gravity,
     const Eigen::Vector3d& gravity_vec,
-    float gravity_thr)
+    float gravity_thr,
+    const std::string& planner_name = "rrtconnect")
 {
     //setting the seed
     //ompl::RNG::setSeed(seed);
@@ -753,9 +772,18 @@ static std::vector<Eigen::VectorXd> run_planner(
     };
 
     // 5) Planner setup (if your URDF exported N DOF, limits size == N)
-    PlanOptions opts; opts.timeSeconds = 10.0; opts.range = 0.2;
+    // time_limit_sec comes from the Python caller (it was previously
+    // ignored — a hardcoded 10 s budget). Optimizing planners (BIT*,
+    // AIT*, ...) are anytime: they use the WHOLE budget to improve the
+    // path, so quality scales directly with this number.
+    PlanOptions opts; opts.timeSeconds = (time_limit_sec > 0.0 ? time_limit_sec : 10.0); opts.range = 0.2;
     PlannerConfig cfg;
-    cfg.kind  = PlannerKind::RRTConnect; // or PlannerKind::RRTstar / PRMstar
+    cfg.kind  = PlannerKind::RRTConnect;
+    if      (planner_name == "rrtstar")  cfg.kind = PlannerKind::RRTstar;
+    else if (planner_name == "prmstar")  cfg.kind = PlannerKind::PRMstar;
+    else if (planner_name == "bitstar")  cfg.kind = PlannerKind::BITstar;
+    else if (planner_name == "aitstar")  cfg.kind = PlannerKind::AITstar;
+    else if (planner_name == "abitstar") cfg.kind = PlannerKind::ABITstar;
     cfg.range = 0.08;
     cfg.goalBias = 0.05;
 
