@@ -557,6 +557,7 @@ public:
         og::PathSimplifier ps(si_);
         auto& pg = ss_->getSolutionPath();
         ps.reduceVertices(pg);
+        ps.ropeShortcutPath(pg);    // iron out residual sampling zigzags before smoothing
         ps.smoothBSpline(pg);   // if even this is unavailable in your build, fall back to simplifySolution()
         // As a fallback or extra:
         // ss_->simplifySolution(0.5); // time-limited simplification
