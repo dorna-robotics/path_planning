@@ -260,6 +260,12 @@ class Planner:
 
 
 	def plan(self, start, goal, seed=1234, gravity=False, gravity_vec=[0,0,1], gravity_thr = 1.0, planner="rrtconnect", time_limit_sec=2.0):
+		# Degenerate query — start and goal are the same state. Nothing to
+		# plan, and the informed planners (AIT*/BIT*) would throw from
+		# OMPL's ProlateHyperspheroid (zero-width sampling ellipsoid).
+		if max(abs(float(s) - float(g)) for s, g in zip(start, goal)) < 1e-6:
+			return [list(map(float, start)), list(map(float, goal))]
+
 		scene_list = []
 		gripper_list = []
 		load_list = []
@@ -290,7 +296,7 @@ class Planner:
 		if not gravity :
 			gravity_vec = [0,0,1]
 
-		path = core.plan(
+		plan_args = dict(
 						start_joint   = np.array(start, dtype=float),
 						goal_joint    = np.array(goal, dtype=float),
 						limit_n       = np.array(self.limit_n[:dof], dtype=float),
@@ -308,6 +314,16 @@ class Planner:
 						gravity		  = gravity,
 						gravity_vec	  = np.array(gravity_vec, dtype=float).reshape(3, 1),
 						gravity_thr	  = gravity_thr,
-						planner		  = planner
 						)
+
+		try:
+			path = core.plan(planner=planner, **plan_args)
+		except RuntimeError as e:
+			# OMPL informed-sampler degeneracy: when the straight-line
+			# connection IS the optimum, the ProlateHyperspheroid used by
+			# AIT*/BIT* collapses and throws mid-solve. RRTConnect never
+			# samples informed — same collision checker, same constraints.
+			if "PHS" not in str(e) and "transverse diameter" not in str(e):
+				raise
+			path = core.plan(planner="rrtconnect", **plan_args)
 		return path

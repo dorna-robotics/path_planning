@@ -511,6 +511,37 @@ public:
         // Small goal tolerance
         const double goalTol = 1e-3;
         ss_->setStartAndGoalStates(sStart, sGoal, goalTol);
+        ss_->setup();
+
+        PlanResult out;
+
+        auto extract = [&](og::PathGeometric& pg) {
+            out.path.reserve(pg.getStateCount());
+            for (size_t i = 0; i < pg.getStateCount(); ++i) {
+                const auto* st = pg.getState(i)->as<ob::RealVectorStateSpace::StateType>();
+                Eigen::VectorXd q(dof_);
+                for (size_t j = 0; j < dof_; ++j) q[j] = (*st)[j];
+                out.path.push_back(std::move(q));
+            }
+        };
+
+        // Direct-connection shortcut: if the straight start→goal segment
+        // is already valid (same validity checker — collisions + gravity
+        // constraint — at the same resolution the planners use for their
+        // own edges), it IS the path-length optimum; no planner needed.
+        // This also sidesteps a pathological informed-sampler case in
+        // AIT*/BIT*: when the optimum equals the cost heuristic, the
+        // ProlateHyperspheroid sampling ellipsoid degenerates and the
+        // solve either throws ("transverse diameter") or rejection-
+        // samples forever, allocating unbounded memory.
+        auto si = ss_->getSpaceInformation();
+        if (si->checkMotion(sStart.get(), sGoal.get())) {
+            og::PathGeometric direct(si, sStart.get(), sGoal.get());
+            direct.interpolate();
+            out.solved = true;
+            extract(direct);
+            return out;
+        }
 
         // Solve
         const double t = (opts_.timeSeconds > 0.0 ? opts_.timeSeconds : 1.0);
@@ -519,7 +550,6 @@ public:
         // near-miss pose while the caller assumes it arrived.
         const bool solved = (ss_->solve(t) == ob::PlannerStatus::EXACT_SOLUTION);
 
-        PlanResult out;
         out.solved = solved;
         if (!solved) return out;
 
@@ -534,15 +564,8 @@ public:
         // Densify
         pg.interpolate();
 
-
         // Extract
-        out.path.reserve(pg.getStateCount());
-        for (size_t i = 0; i < pg.getStateCount(); ++i) {
-            const auto* st = pg.getState(i)->as<ob::RealVectorStateSpace::StateType>();
-            Eigen::VectorXd q(dof_);
-            for (size_t j = 0; j < dof_; ++j) q[j] = (*st)[j];
-            out.path.push_back(std::move(q));
-        }
+        extract(pg);
         return out;
     }
 
