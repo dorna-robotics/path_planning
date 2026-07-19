@@ -119,8 +119,16 @@ PYBIND11_MODULE(core, m) {
       auto gripper_v = parse_shape_list(gripper);
       auto aux     = parse_aux(aux_dir);
 
-      auto wps = run_planner(start_joint, goal_joint, limit_n, limit_p, scene_v, load_v, gripper_v,
-                             tool, base_in_world, frame_in_world, aux, time_limit_sec, g_pkg_dir, seed, has_camera, gravity, gravity_vec, gravity_thr, planner);
+      std::vector<Eigen::VectorXd> wps;
+      {
+        // Release the GIL for the (potentially many-second) C++ solve —
+        // otherwise every Python thread freezes: the 60fps display pump
+        // stalls, socket.io misses heartbeats, and the viewer
+        // disconnects/reloads mid-run.
+        py::gil_scoped_release release;
+        wps = run_planner(start_joint, goal_joint, limit_n, limit_p, scene_v, load_v, gripper_v,
+                          tool, base_in_world, frame_in_world, aux, time_limit_sec, g_pkg_dir, seed, has_camera, gravity, gravity_vec, gravity_thr, planner);
+      }
       return to_numpy(wps);
     },
     py::arg("start_joint"),
