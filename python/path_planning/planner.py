@@ -327,3 +327,55 @@ class Planner:
 				raise
 			path = core.plan(planner="rrtconnect", **plan_args)
 		return path
+
+
+	def check(self, path, gravity=False, gravity_vec=[0,0,1], gravity_thr = 1.0):
+		"""Revalidate a stored path (degrees, list of joint lists) against
+		the CURRENT scene/load/gripper — same validity checker the
+		planners use. True only if every segment is valid."""
+		scene_list = []
+		gripper_list = []
+		load_list = []
+
+		for obj in self.scene:
+			scene_list.append({
+								"pose":  obj.pose,          # vec6
+								"scale": obj.scale,                # vec3
+								"type":  core.ShapeType.Box         # enum
+								})
+
+		for obj in self.load:
+			load_list.append({
+								"pose":  obj.pose,          # vec6
+								"scale": obj.scale,                # vec3
+								"type":  core.ShapeType.Box         # enum
+								})
+
+		for obj in self.gripper:
+			gripper_list.append({
+								"pose":  obj.pose,          # vec6
+								"scale": obj.scale,                # vec3
+								"type":  core.ShapeType.Box         # enum
+								})
+
+		dof = len(path[0])
+
+		if not gravity :
+			gravity_vec = [0,0,1]
+
+		return core.check_path(
+						path          = [[float(v) for v in p] for p in path],
+						limit_n       = np.array(self.limit_n[:dof], dtype=float),
+						limit_p       = np.array(self.limit_p[:dof], dtype=float),
+						scene         = scene_list,
+						load          = load_list,
+						gripper       = gripper_list,
+						tool          = np.array(self.tool, dtype=float),
+						base_in_world = np.array(self.base_in_world, dtype=float),
+						frame_in_world= np.array(self.frame_in_world, dtype=float),
+						aux_dir       = self.aux_dir,
+						has_camera    = self.has_camera,
+						gravity       = gravity,
+						gravity_vec   = np.array(gravity_vec, dtype=float).reshape(3, 1),
+						gravity_thr   = gravity_thr,
+						)

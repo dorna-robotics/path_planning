@@ -570,6 +570,33 @@ public:
         return out;
     }
 
+    // Validate a stored path against the CURRENT scene: same validity
+    // checker (collisions + gravity constraint) at the same resolution
+    // the planners use for their own edges. checkMotion assumes its
+    // first state valid, so the first waypoint is checked explicitly.
+    bool checkPath(const std::vector<Eigen::VectorXd>& qs) {
+        if (qs.size() < 2) return false;
+
+        auto space = std::static_pointer_cast<ob::RealVectorStateSpace>(ss_->getStateSpace());
+        auto si = ss_->getSpaceInformation();
+        si->setup();
+
+        std::vector<ob::ScopedState<>> states;
+        states.reserve(qs.size());
+        for (const auto& q : qs) {
+            if ((size_t)q.size() != dof_) return false;
+            ob::ScopedState<> s(space);
+            for (size_t i = 0; i < dof_; ++i) s[i] = q[i];
+            space->enforceBounds(s.get());
+            states.push_back(s);
+        }
+
+        if (!si->isValid(states.front().get())) return false;
+        for (size_t i = 0; i + 1 < states.size(); ++i)
+            if (!si->checkMotion(states[i].get(), states[i + 1].get())) return false;
+        return true;
+    }
+
 private:
     size_t dof_;
     PlanOptions opts_;
@@ -828,5 +855,132 @@ static std::vector<Eigen::VectorXd> run_planner(
     }
 
     return result.path;
+}
+
+// Revalidate a previously planned path (degrees, N x DOF) against the
+// CURRENT scene/load/gripper. Mirrors run_planner's setup exactly —
+// same URDF, limits, validity checker, gravity constraint — but walks
+// checkMotion over the stored waypoints instead of solving. This is
+// what makes a path cache safe: a hit is only executed after it passes
+// the same checks a fresh plan would.
+static bool run_check_path(
+    std::vector<Eigen::VectorXd>& path,
+    Eigen::VectorXd& limit_n,
+    Eigen::VectorXd& limit_p,
+    const std::vector<InputShape>& scene,
+    const std::vector<InputShape>& load,
+    const std::vector<InputShape>& gripper,
+    const Eigen::Matrix<double,6,1>& tool,
+    const Eigen::Matrix<double,6,1>& base_in_world,
+    const Eigen::Matrix<double,6,1>& frame_in_world,
+    const std::array<Eigen::Vector3d,2>& aux_dir,
+    std::string pkg_dir,
+    bool has_camera,
+    bool gravity,
+    const Eigen::Vector3d& gravity_vec,
+    float gravity_thr)
+{
+    ompl::msg::setLogLevel(ompl::msg::LOG_WARN);
+
+    g_pkg_dir = pkg_dir;
+
+    if (path.size() < 2) return false;
+    const int DOF = static_cast<int>(path[0].size());
+
+    for (auto& q : path) q = degreesToRadians6(q);
+    limit_n = degreesToRadians6(limit_n);
+    limit_p = degreesToRadians6(limit_p);
+
+    std::vector<std::string> linkNames = {
+        "j0_link", "j1_link", "j2_link", "j3_link", "j4_link", "j5_link", "j6_link"
+    };
+
+    const std::string urdfRel = (has_camera)?"urdf/dorna_ta_camera.urdf":"urdf/dorna_ta.urdf";
+    URDFFK urdf_fk(resource_path(urdfRel), linkNames);
+
+    std::vector<std::pair<double,double>> limits;
+    limits.reserve(limit_n.size());
+    for (int i = 0; i < limit_n.size(); ++i) {
+        limits.emplace_back(limit_n[i], limit_p[i]);
+    }
+
+    auto links = extractLinkCollisionsFromURDF(urdf_fk.model(), linkNames);
+    for (auto& lcvec : links) if (lcvec.empty()) {
+        std::cout<<"\n link is empty of collision shapes";
+    }
+    size_t lastLinkIndex = links.size() - 1;
+
+    std::vector<ObjectInstance> out_scene;
+    std::vector<ObjectInstance> out_load;
+    std::vector<ObjectInstance> out_gripper;
+
+    for(int i=0; i<scene.size(); i++){
+        ObjectInstance bin;
+        bin.shape.type = ShapeType::BOX;
+        auto o = scene[i];
+        bin.shape.box  = {o.scale(0),o.scale(1),o.scale(2)};
+        bin.pose.t     = Eigen::Vector3d(o.pose(0), o.pose(1), o.pose(2));
+        bin.pose.rvec  = Eigen::Vector3d(o.pose(3), o.pose(4), o.pose(5));
+        out_scene.push_back(bin);
+    }
+    for(int i=0; i<load.size(); i++){
+        ObjectInstance bin;
+        bin.shape.type = ShapeType::BOX;
+        auto o = load[i];
+        bin.shape.box  = {o.scale(0),o.scale(1),o.scale(2)};
+        bin.pose.t     = Eigen::Vector3d(o.pose(0), o.pose(1), o.pose(2));
+        bin.pose.rvec  = Eigen::Vector3d(o.pose(3), o.pose(4), o.pose(5));
+        out_load.push_back(bin);
+    }
+    for(int i=0; i<gripper.size(); i++){
+        ObjectInstance bin;
+        bin.shape.type = ShapeType::BOX;
+        auto o = gripper[i];
+        bin.shape.box  = {o.scale(0),o.scale(1),o.scale(2)};
+        bin.pose.t     = Eigen::Vector3d(o.pose(0), o.pose(1), o.pose(2));
+        bin.pose.rvec  = Eigen::Vector3d(o.pose(3), o.pose(4), o.pose(5));
+        out_gripper.push_back(bin);
+    }
+
+    PoseAA base_pose, frame_pose, tool_pose;
+    base_pose.set(base_in_world);
+    frame_pose.set(frame_in_world);
+    tool_pose.set(tool);
+
+    Eigen::Isometry3d base = base_pose.toIsometry();
+    Eigen::Isometry3d frame = frame_pose.toIsometry();
+    Eigen::Isometry3d tool_iso = tool_pose.toIsometry();
+
+    Eigen::Vector3d aux_dir_1 = base.rotation() * aux_dir[0];
+    Eigen::Vector3d aux_dir_2 = base.rotation() * aux_dir[1];
+
+    fk_cb = [&](const Eigen::VectorXd& q, std::vector<Eigen::Isometry3d>& linkWorld){
+        Eigen::Isometry3d aux_base = base;
+        if(q.size()>=7){
+            aux_base.translate(aux_dir_1 * q[6] * 100.);
+        }
+        if(q.size()>=8){
+            aux_base.translate(aux_dir_2 * q[7] * 100.);
+        }
+
+        Eigen::VectorXd q6;
+        if (q.size() == 6) {
+            q6 = q;
+        } else {
+            assert(q.size() >= 6 && "q must have at least 6 dofs");
+            q6 = Eigen::VectorXd(q.head(6));
+        }
+        urdf_fk.compute(q6, linkWorld,  aux_base);
+    };
+
+    PlanOptions opts; opts.timeSeconds = 1.0; opts.range = 0.2;
+    PlannerConfig cfg;
+    cfg.kind  = PlannerKind::RRTConnect;
+    cfg.range = 0.08;
+    cfg.goalBias = 0.05;
+
+    JointSpacePlanner planner(DOF, limits, links, lastLinkIndex, fk_cb, out_scene, out_load, out_gripper, tool_iso, gravity_vec, frame,  opts, cfg, gravity, gravity_thr);
+
+    return planner.checkPath(path);
 }
 

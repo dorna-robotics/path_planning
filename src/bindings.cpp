@@ -158,4 +158,66 @@ plan(start_joint=..., goal_joint=..., scene=[{pose,scale,type},...], load=[...],
 - tool, base_in_world, frame_in_world: vec6 (x,y,z,rx,ry,rz).
 - aux_dir: [vec3, vec3].
 )doc");
+
+  m.def("check_path",
+    [](const std::vector<std::vector<double>>& path,
+       Eigen::VectorXd& limit_n,
+       Eigen::VectorXd& limit_p,
+       py::object scene,
+       py::object load,
+       py::object gripper,
+       const Eigen::Matrix<double,6,1>& tool,
+       const Eigen::Matrix<double,6,1>& base_in_world,
+       const Eigen::Matrix<double,6,1>& frame_in_world,
+       py::object aux_dir,
+       bool has_camera,
+       bool gravity,
+       Eigen::Vector3d& gravity_vec,
+       float gravity_thr)
+    {
+      if (path.size() < 2) return false;
+      std::vector<Eigen::VectorXd> wps;
+      wps.reserve(path.size());
+      for (const auto& row : path) {
+        Eigen::VectorXd q(row.size());
+        for (size_t i = 0; i < row.size(); ++i) q[i] = row[i];
+        wps.push_back(std::move(q));
+      }
+
+      auto scene_v = parse_shape_list(scene);
+      auto load_v  = parse_shape_list(load);
+      auto gripper_v = parse_shape_list(gripper);
+      auto aux     = parse_aux(aux_dir);
+
+      bool ok;
+      {
+        py::gil_scoped_release release;
+        ok = run_check_path(wps, limit_n, limit_p, scene_v, load_v, gripper_v,
+                            tool, base_in_world, frame_in_world, aux, g_pkg_dir,
+                            has_camera, gravity, gravity_vec, gravity_thr);
+      }
+      return ok;
+    },
+    py::arg("path"),
+    py::arg("limit_n"),
+    py::arg("limit_p"),
+    py::arg("scene") = py::none(),
+    py::arg("load")  = py::none(),
+    py::arg("gripper") = py::none(),
+    py::arg("tool"),
+    py::arg("base_in_world"),
+    py::arg("frame_in_world"),
+    py::arg("aux_dir"),
+    py::arg("has_camera") = false,
+    py::arg("gravity") = false,
+    py::arg("gravity_vec"),
+    py::arg("gravity_thr") = 1.0,
+    R"doc(
+check_path(path=[[DOF]...], ...) -> bool
+
+Revalidate a previously planned path (degrees) against the CURRENT
+scene/load/gripper: same validity checker (collisions + gravity
+constraint) at the same resolution the planners use. True only if
+every waypoint-to-waypoint motion is valid.
+)doc");
 }
