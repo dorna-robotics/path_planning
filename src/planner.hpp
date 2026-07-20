@@ -414,7 +414,8 @@ public:
                       PlanOptions opts = {},
                       PlannerConfig pcfg = {},
                       bool gravity = false,
-                      float gravity_thr = 1.0)
+                      float gravity_thr = 1.0,
+                      double rail_weight = 0.01)
         : dof_(dof), opts_(opts), cfg_(pcfg)
     {
         // 1) Space + bounds
@@ -429,10 +430,17 @@ public:
         ss_ = std::make_unique<og::SimpleSetup>(space);
         si_ = ss_->getSpaceInformation();
 
-        // Resolution controls
-        si_->setStateValidityCheckingResolution(0.01);   // ~1% of extent
+        // Resolution controls — anchored to PHYSICAL step sizes (max 2°
+        // of arm or 5 mm of rail between consecutive validity checks,
+        // whichever is finer in scaled units), not a fraction of extent.
+        // A cheaper rail (smaller rail_weight) compresses the rail
+        // dimension, and a fixed %-of-extent step would sweep whole
+        // centimeters of rail past thin obstacles unchecked.
+        const double stepUnits = std::min(2.0 * PI / 180.0, 5.0 * rail_weight);
+        const double frac = stepUnits / space->getMaximumExtent();
+        si_->setStateValidityCheckingResolution(frac);
         // NOTE: this is on the StateSpace, not SpaceInformation:
-        ss_->getStateSpace()->setLongestValidSegmentFraction(0.01);
+        ss_->getStateSpace()->setLongestValidSegmentFraction(frac);
 
         // 2) Validity checker (FCL env + load)
         auto vc = std::make_shared<RobotValidityChecker>(
@@ -654,7 +662,12 @@ struct InputShape {
   InShapeType                 type;
 };
 
-Eigen::VectorXd radiansToDegrees6(const Eigen::VectorXd& x) {
+// rail_weight is the mm -> scaled-unit factor for the aux (rail) axes.
+// It is the rail's COST in the path-length metric: at 0.01, 100 mm of
+// rail costs like ~57° of arm and the optimizer avoids the rail;
+// smaller values make rail travel cheaper and paths slide the bench
+// instead of contorting the arm.
+Eigen::VectorXd radiansToDegrees6(const Eigen::VectorXd& x, double rail_weight = 0.01) {
     Eigen::VectorXd result = x;  // copy so original isn't modified
     const int n = static_cast<int>(result.size());
 
@@ -662,15 +675,15 @@ Eigen::VectorXd radiansToDegrees6(const Eigen::VectorXd& x) {
         result[i] = x[i] * 180.0 / PI;
     }
 
-    if (n >= 7) result[6] = x[6] * 100.0;
-    if (n >= 8) result[7] = x[7] * 100.0;
+    if (n >= 7) result[6] = x[6] / rail_weight;
+    if (n >= 8) result[7] = x[7] / rail_weight;
 
     return result;
 }
 
 // Convert first 6 elements from degrees -> radians.
-// If x has 7th/8th elements (rail axes), scale them by 0.001x.
-Eigen::VectorXd degreesToRadians6(const Eigen::VectorXd& x) {
+// If x has 7th/8th elements (rail axes), scale them by rail_weight.
+Eigen::VectorXd degreesToRadians6(const Eigen::VectorXd& x, double rail_weight = 0.01) {
     Eigen::VectorXd result = x;
     const int n = static_cast<int>(result.size());
 
@@ -678,8 +691,8 @@ Eigen::VectorXd degreesToRadians6(const Eigen::VectorXd& x) {
         result[i] = x[i] * PI / 180.0;
     }
 
-    if (n >= 7) result[6] = x[6] * 0.01;
-    if (n >= 8) result[7] = x[7] * 0.01;
+    if (n >= 7) result[6] = x[6] * rail_weight;
+    if (n >= 8) result[7] = x[7] * rail_weight;
 
     return result;
 }
@@ -703,7 +716,8 @@ static std::vector<Eigen::VectorXd> run_planner(
     bool gravity,
     const Eigen::Vector3d& gravity_vec,
     float gravity_thr,
-    const std::string& planner_name = "rrtconnect")
+    const std::string& planner_name = "rrtconnect",
+    double rail_weight = 0.01)
 {
     //setting the seed
     //ompl::RNG::setSeed(seed);
@@ -713,10 +727,10 @@ static std::vector<Eigen::VectorXd> run_planner(
 
     const int DOF = static_cast<int>(q_start.size());
 
-    q_start = degreesToRadians6(q_start);
-    q_goal = degreesToRadians6(q_goal);
-    limit_n = degreesToRadians6(limit_n);
-    limit_p = degreesToRadians6(limit_p);
+    q_start = degreesToRadians6(q_start, rail_weight);
+    q_goal = degreesToRadians6(q_goal, rail_weight);
+    limit_n = degreesToRadians6(limit_n, rail_weight);
+    limit_p = degreesToRadians6(limit_p, rail_weight);
     //starting planner section:
 
     // Your chain in order:
@@ -801,13 +815,13 @@ static std::vector<Eigen::VectorXd> run_planner(
 
     // 4) FK callback bridge for the validity checker
     fk_cb = [&](const Eigen::VectorXd& q, std::vector<Eigen::Isometry3d>& linkWorld){
-        //aplying aux dirs
+        //aplying aux dirs — scaled rail units back to mm (1/rail_weight)
         Eigen::Isometry3d aux_base = base;
         if(q.size()>=7){
-            aux_base.translate(aux_dir_1 * q[6] * 100.);
+            aux_base.translate(aux_dir_1 * q[6] / rail_weight);
         }
         if(q.size()>=8){
-            aux_base.translate(aux_dir_2 * q[7] * 100.);
+            aux_base.translate(aux_dir_2 * q[7] / rail_weight);
         }
 
         Eigen::VectorXd q6;
@@ -838,7 +852,7 @@ static std::vector<Eigen::VectorXd> run_planner(
     cfg.range = 0.08;
     cfg.goalBias = 0.05;
 
-    JointSpacePlanner planner(DOF, limits, links, lastLinkIndex, fk_cb, out_scene, out_load, out_gripper, tool_iso, gravity_vec, frame,  opts, cfg, gravity, gravity_thr);
+    JointSpacePlanner planner(DOF, limits, links, lastLinkIndex, fk_cb, out_scene, out_load, out_gripper, tool_iso, gravity_vec, frame,  opts, cfg, gravity, gravity_thr, rail_weight);
 
     auto result = planner.plan(q_start, q_goal);
     if (!result.solved) { std::vector<Eigen::VectorXd> empty_path; return  empty_path;}
@@ -851,7 +865,7 @@ static std::vector<Eigen::VectorXd> run_planner(
     */
 
     for(int i = 0 ;i<result.path.size();i++){
-        result.path[i] = radiansToDegrees6( result.path[i] );
+        result.path[i] = radiansToDegrees6( result.path[i], rail_weight );
     }
 
     return result.path;
@@ -878,7 +892,8 @@ static bool run_check_path(
     bool has_camera,
     bool gravity,
     const Eigen::Vector3d& gravity_vec,
-    float gravity_thr)
+    float gravity_thr,
+    double rail_weight = 0.01)
 {
     ompl::msg::setLogLevel(ompl::msg::LOG_WARN);
 
@@ -887,9 +902,9 @@ static bool run_check_path(
     if (path.size() < 2) return false;
     const int DOF = static_cast<int>(path[0].size());
 
-    for (auto& q : path) q = degreesToRadians6(q);
-    limit_n = degreesToRadians6(limit_n);
-    limit_p = degreesToRadians6(limit_p);
+    for (auto& q : path) q = degreesToRadians6(q, rail_weight);
+    limit_n = degreesToRadians6(limit_n, rail_weight);
+    limit_p = degreesToRadians6(limit_p, rail_weight);
 
     std::vector<std::string> linkNames = {
         "j0_link", "j1_link", "j2_link", "j3_link", "j4_link", "j5_link", "j6_link"
@@ -957,10 +972,10 @@ static bool run_check_path(
     fk_cb = [&](const Eigen::VectorXd& q, std::vector<Eigen::Isometry3d>& linkWorld){
         Eigen::Isometry3d aux_base = base;
         if(q.size()>=7){
-            aux_base.translate(aux_dir_1 * q[6] * 100.);
+            aux_base.translate(aux_dir_1 * q[6] / rail_weight);
         }
         if(q.size()>=8){
-            aux_base.translate(aux_dir_2 * q[7] * 100.);
+            aux_base.translate(aux_dir_2 * q[7] / rail_weight);
         }
 
         Eigen::VectorXd q6;
@@ -979,7 +994,7 @@ static bool run_check_path(
     cfg.range = 0.08;
     cfg.goalBias = 0.05;
 
-    JointSpacePlanner planner(DOF, limits, links, lastLinkIndex, fk_cb, out_scene, out_load, out_gripper, tool_iso, gravity_vec, frame,  opts, cfg, gravity, gravity_thr);
+    JointSpacePlanner planner(DOF, limits, links, lastLinkIndex, fk_cb, out_scene, out_load, out_gripper, tool_iso, gravity_vec, frame,  opts, cfg, gravity, gravity_thr, rail_weight);
 
     return planner.checkPath(path);
 }
