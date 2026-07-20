@@ -566,7 +566,7 @@ public:
         auto& pg = ss_->getSolutionPath();
         ps.reduceVertices(pg);
         ps.ropeShortcutPath(pg);    // iron out residual sampling zigzags before smoothing
-        ps.smoothBSpline(pg);   // if even this is unavailable in your build, fall back to simplifySolution()
+        ps.smoothBSpline(pg, 25);   // 25 rounds (default 5) — bake softer bends into the route itself; every smoothed segment stays validity-checked
         // As a fallback or extra:
         // ss_->simplifySolution(0.5); // time-limited simplification
 
