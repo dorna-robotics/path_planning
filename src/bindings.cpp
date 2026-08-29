@@ -109,7 +109,8 @@ PYBIND11_MODULE(core, m) {
        Eigen::Vector3d& gravity_vec,
        float gravity_thr,
        const std::string& planner,
-       double rail_weight)
+       double rail_weight,
+       const std::vector<double>& joint_weights)
     {
       if (start_joint.size() == 0) throw std::runtime_error("start_joint is empty");
       if (goal_joint.size()  != start_joint.size() || limit_n.size()  != start_joint.size() || limit_p.size()  != start_joint.size())
@@ -128,7 +129,7 @@ PYBIND11_MODULE(core, m) {
         // disconnects/reloads mid-run.
         py::gil_scoped_release release;
         wps = run_planner(start_joint, goal_joint, limit_n, limit_p, scene_v, load_v, gripper_v,
-                          tool, base_in_world, frame_in_world, aux, time_limit_sec, g_pkg_dir, seed, has_camera, gravity, gravity_vec, gravity_thr, planner, rail_weight);
+                          tool, base_in_world, frame_in_world, aux, time_limit_sec, g_pkg_dir, seed, has_camera, gravity, gravity_vec, gravity_thr, planner, rail_weight, joint_weights);
       }
       return to_numpy(wps);
     },
@@ -151,6 +152,7 @@ PYBIND11_MODULE(core, m) {
     py::arg("gravity_thr") = 1.0,
     py::arg("planner") = "rrtconnect",
     py::arg("rail_weight") = 0.01,
+    py::arg("joint_weights") = std::vector<double>{},
     R"doc(
 plan(start_joint=..., goal_joint=..., scene=[{pose,scale,type},...], load=[...], gripper = [...]
      tool=[6], base_in_world=[6], frame_in_world=[6], aux_dir=[[3],[3]], time_limit_sec=1.0) -> np.ndarray (N, DOF)
@@ -176,7 +178,8 @@ plan(start_joint=..., goal_joint=..., scene=[{pose,scale,type},...], load=[...],
        bool gravity,
        Eigen::Vector3d& gravity_vec,
        float gravity_thr,
-       double rail_weight)
+       double rail_weight,
+       const std::vector<double>& joint_weights)
     {
       if (path.size() < 2) return false;
       std::vector<Eigen::VectorXd> wps;
@@ -197,7 +200,7 @@ plan(start_joint=..., goal_joint=..., scene=[{pose,scale,type},...], load=[...],
         py::gil_scoped_release release;
         ok = run_check_path(wps, limit_n, limit_p, scene_v, load_v, gripper_v,
                             tool, base_in_world, frame_in_world, aux, g_pkg_dir,
-                            has_camera, gravity, gravity_vec, gravity_thr, rail_weight);
+                            has_camera, gravity, gravity_vec, gravity_thr, rail_weight, joint_weights);
       }
       return ok;
     },
@@ -216,6 +219,7 @@ plan(start_joint=..., goal_joint=..., scene=[{pose,scale,type},...], load=[...],
     py::arg("gravity_vec"),
     py::arg("gravity_thr") = 1.0,
     py::arg("rail_weight") = 0.01,
+    py::arg("joint_weights") = std::vector<double>{},
     R"doc(
 check_path(path=[[DOF]...], ...) -> bool
 

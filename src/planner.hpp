@@ -415,7 +415,8 @@ public:
                       PlannerConfig pcfg = {},
                       bool gravity = false,
                       float gravity_thr = 1.0,
-                      double rail_weight = 0.01)
+                      double rail_weight = 0.01,
+                      double min_jw = 1.0)
         : dof_(dof), opts_(opts), cfg_(pcfg)
     {
         // 1) Space + bounds
@@ -436,7 +437,10 @@ public:
         // A cheaper rail (smaller rail_weight) compresses the rail
         // dimension, and a fixed %-of-extent step would sweep whole
         // centimeters of rail past thin obstacles unchecked.
-        const double stepUnits = std::min(2.0 * PI / 180.0, 5.0 * rail_weight);
+        // min_jw: the CHEAPEST arm joint compresses its dimension the
+        // most — anchor the physical 2-degree step to it so cheap
+        // joints are never under-sampled between validity checks.
+        const double stepUnits = std::min(2.0 * PI / 180.0 * std::min(min_jw, 1.0), 5.0 * rail_weight);
         const double frac = stepUnits / space->getMaximumExtent();
         si_->setStateValidityCheckingResolution(frac);
         // NOTE: this is on the StateSpace, not SpaceInformation:
@@ -667,12 +671,21 @@ struct InputShape {
 // rail costs like ~57° of arm and the optimizer avoids the rail;
 // smaller values make rail travel cheaper and paths slide the bench
 // instead of contorting the arm.
-Eigen::VectorXd radiansToDegrees6(const Eigen::VectorXd& x, double rail_weight = 0.01) {
+// Per-joint metric weights (joint_weights): multiplier on each ARM
+// joint's scaled-unit cost. w>1 makes that joint EXPENSIVE (the
+// optimizer avoids moving it), w<1 makes it cheap. Empty = all 1.0
+// (the historical uniform metric). Rail axes keep rail_weight.
+static inline double jw_at(const std::vector<double>& jw, int i) {
+    return (i < static_cast<int>(jw.size()) && jw[i] > 0.0) ? jw[i] : 1.0;
+}
+
+Eigen::VectorXd radiansToDegrees6(const Eigen::VectorXd& x, double rail_weight = 0.01,
+                                  const std::vector<double>& jw = {}) {
     Eigen::VectorXd result = x;  // copy so original isn't modified
     const int n = static_cast<int>(result.size());
 
     for (int i = 0; i < std::min(6, n); ++i) {
-        result[i] = x[i] * 180.0 / PI;
+        result[i] = x[i] * 180.0 / PI / jw_at(jw, i);
     }
 
     if (n >= 7) result[6] = x[6] / rail_weight;
@@ -683,12 +696,13 @@ Eigen::VectorXd radiansToDegrees6(const Eigen::VectorXd& x, double rail_weight =
 
 // Convert first 6 elements from degrees -> radians.
 // If x has 7th/8th elements (rail axes), scale them by rail_weight.
-Eigen::VectorXd degreesToRadians6(const Eigen::VectorXd& x, double rail_weight = 0.01) {
+Eigen::VectorXd degreesToRadians6(const Eigen::VectorXd& x, double rail_weight = 0.01,
+                                  const std::vector<double>& jw = {}) {
     Eigen::VectorXd result = x;
     const int n = static_cast<int>(result.size());
 
     for (int i = 0; i < std::min(6, n); ++i) {
-        result[i] = x[i] * PI / 180.0;
+        result[i] = x[i] * PI / 180.0 * jw_at(jw, i);
     }
 
     if (n >= 7) result[6] = x[6] * rail_weight;
@@ -717,7 +731,8 @@ static std::vector<Eigen::VectorXd> run_planner(
     const Eigen::Vector3d& gravity_vec,
     float gravity_thr,
     const std::string& planner_name = "rrtconnect",
-    double rail_weight = 0.01)
+    double rail_weight = 0.01,
+    const std::vector<double>& joint_weights = {})
 {
     //setting the seed
     //ompl::RNG::setSeed(seed);
@@ -727,10 +742,10 @@ static std::vector<Eigen::VectorXd> run_planner(
 
     const int DOF = static_cast<int>(q_start.size());
 
-    q_start = degreesToRadians6(q_start, rail_weight);
-    q_goal = degreesToRadians6(q_goal, rail_weight);
-    limit_n = degreesToRadians6(limit_n, rail_weight);
-    limit_p = degreesToRadians6(limit_p, rail_weight);
+    q_start = degreesToRadians6(q_start, rail_weight, joint_weights);
+    q_goal = degreesToRadians6(q_goal, rail_weight, joint_weights);
+    limit_n = degreesToRadians6(limit_n, rail_weight, joint_weights);
+    limit_p = degreesToRadians6(limit_p, rail_weight, joint_weights);
     //starting planner section:
 
     // Your chain in order:
@@ -824,13 +839,9 @@ static std::vector<Eigen::VectorXd> run_planner(
             aux_base.translate(aux_dir_2 * q[7] / rail_weight);
         }
 
-        Eigen::VectorXd q6;
-        if (q.size() == 6) {
-            q6 = q;
-        } else {
-            assert(q.size() >= 6 && "q must have at least 6 dofs");
-            q6 = Eigen::VectorXd(q.head(6));  // construct a new VectorXd from the head
-        }
+        Eigen::VectorXd q6(6);
+        assert(q.size() >= 6 && "q must have at least 6 dofs");
+        for (int i = 0; i < 6; ++i) q6[i] = q[i] / jw_at(joint_weights, i);
 
         //calculating all values
         urdf_fk.compute(q6, linkWorld,  aux_base);
@@ -852,7 +863,9 @@ static std::vector<Eigen::VectorXd> run_planner(
     cfg.range = 0.08;
     cfg.goalBias = 0.05;
 
-    JointSpacePlanner planner(DOF, limits, links, lastLinkIndex, fk_cb, out_scene, out_load, out_gripper, tool_iso, gravity_vec, frame,  opts, cfg, gravity, gravity_thr, rail_weight);
+    double min_jw = 1.0;
+    for (int i = 0; i < 6; ++i) min_jw = std::min(min_jw, jw_at(joint_weights, i));
+    JointSpacePlanner planner(DOF, limits, links, lastLinkIndex, fk_cb, out_scene, out_load, out_gripper, tool_iso, gravity_vec, frame,  opts, cfg, gravity, gravity_thr, rail_weight, min_jw);
 
     auto result = planner.plan(q_start, q_goal);
     if (!result.solved) { std::vector<Eigen::VectorXd> empty_path; return  empty_path;}
@@ -865,7 +878,7 @@ static std::vector<Eigen::VectorXd> run_planner(
     */
 
     for(int i = 0 ;i<result.path.size();i++){
-        result.path[i] = radiansToDegrees6( result.path[i], rail_weight );
+        result.path[i] = radiansToDegrees6( result.path[i], rail_weight, joint_weights );
     }
 
     return result.path;
@@ -893,7 +906,8 @@ static bool run_check_path(
     bool gravity,
     const Eigen::Vector3d& gravity_vec,
     float gravity_thr,
-    double rail_weight = 0.01)
+    double rail_weight = 0.01,
+    const std::vector<double>& joint_weights = {})
 {
     ompl::msg::setLogLevel(ompl::msg::LOG_WARN);
 
@@ -902,9 +916,9 @@ static bool run_check_path(
     if (path.size() < 2) return false;
     const int DOF = static_cast<int>(path[0].size());
 
-    for (auto& q : path) q = degreesToRadians6(q, rail_weight);
-    limit_n = degreesToRadians6(limit_n, rail_weight);
-    limit_p = degreesToRadians6(limit_p, rail_weight);
+    for (auto& q : path) q = degreesToRadians6(q, rail_weight, joint_weights);
+    limit_n = degreesToRadians6(limit_n, rail_weight, joint_weights);
+    limit_p = degreesToRadians6(limit_p, rail_weight, joint_weights);
 
     std::vector<std::string> linkNames = {
         "j0_link", "j1_link", "j2_link", "j3_link", "j4_link", "j5_link", "j6_link"
@@ -978,13 +992,9 @@ static bool run_check_path(
             aux_base.translate(aux_dir_2 * q[7] / rail_weight);
         }
 
-        Eigen::VectorXd q6;
-        if (q.size() == 6) {
-            q6 = q;
-        } else {
-            assert(q.size() >= 6 && "q must have at least 6 dofs");
-            q6 = Eigen::VectorXd(q.head(6));
-        }
+        Eigen::VectorXd q6(6);
+        assert(q.size() >= 6 && "q must have at least 6 dofs");
+        for (int i = 0; i < 6; ++i) q6[i] = q[i] / jw_at(joint_weights, i);
         urdf_fk.compute(q6, linkWorld,  aux_base);
     };
 
@@ -994,7 +1004,9 @@ static bool run_check_path(
     cfg.range = 0.08;
     cfg.goalBias = 0.05;
 
-    JointSpacePlanner planner(DOF, limits, links, lastLinkIndex, fk_cb, out_scene, out_load, out_gripper, tool_iso, gravity_vec, frame,  opts, cfg, gravity, gravity_thr, rail_weight);
+    double min_jw = 1.0;
+    for (int i = 0; i < 6; ++i) min_jw = std::min(min_jw, jw_at(joint_weights, i));
+    JointSpacePlanner planner(DOF, limits, links, lastLinkIndex, fk_cb, out_scene, out_load, out_gripper, tool_iso, gravity_vec, frame,  opts, cfg, gravity, gravity_thr, rail_weight, min_jw);
 
     return planner.checkPath(path);
 }

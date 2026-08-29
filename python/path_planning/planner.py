@@ -259,7 +259,7 @@ class Planner:
 		return node.create_cube(xyz_rvec=pose, scale=scale)
 
 
-	def plan(self, start, goal, seed=1234, gravity=False, gravity_vec=[0,0,1], gravity_thr = 1.0, planner="rrtconnect", time_limit_sec=2.0, rail_weight=0.01):
+	def plan(self, start, goal, seed=1234, gravity=False, gravity_vec=[0,0,1], gravity_thr = 1.0, planner="rrtconnect", time_limit_sec=2.0, rail_weight=0.01, joint_weights=None):
 		# Degenerate query — start and goal are the same state. Nothing to
 		# plan, and the informed planners (AIT*/BIT*) would throw from
 		# OMPL's ProlateHyperspheroid (zero-width sampling ellipsoid).
@@ -315,6 +315,7 @@ class Planner:
 						gravity_vec	  = np.array(gravity_vec, dtype=float).reshape(3, 1),
 						gravity_thr	  = gravity_thr,
 						rail_weight	  = rail_weight,
+						joint_weights = list(joint_weights) if joint_weights else [],
 						)
 
 		try:
@@ -330,7 +331,7 @@ class Planner:
 		return path
 
 
-	def check(self, path, gravity=False, gravity_vec=[0,0,1], gravity_thr = 1.0, rail_weight=0.01):
+	def check(self, path, gravity=False, gravity_vec=[0,0,1], gravity_thr = 1.0, rail_weight=0.01, joint_weights=None):
 		"""Revalidate a stored path (degrees, list of joint lists) against
 		the CURRENT scene/load/gripper — same validity checker the
 		planners use. True only if every segment is valid."""
@@ -380,4 +381,5 @@ class Planner:
 						gravity_vec   = np.array(gravity_vec, dtype=float).reshape(3, 1),
 						gravity_thr   = gravity_thr,
 						rail_weight   = rail_weight,
+						joint_weights = list(joint_weights) if joint_weights else [],
 						)
