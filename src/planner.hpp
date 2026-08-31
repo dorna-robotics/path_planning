@@ -560,7 +560,23 @@ public:
         // EXACT only — an APPROXIMATE status is a path that does NOT
         // reach the goal; executing it would leave the robot at a
         // near-miss pose while the caller assumes it arrived.
-        const bool solved = (ss_->solve(t) == ob::PlannerStatus::EXACT_SOLUTION);
+        //
+        // DETERMINISTIC TERMINATION: with the RNG seeded, the first
+        // exact solution is a pure function of the problem — the
+        // sampling sequence is fixed, so the solution appears at a
+        // fixed iteration regardless of CPU speed or load. A bare
+        // time budget breaks that: solve(t) lets a fast (or idle)
+        // machine run more optimizer iterations and return a
+        // DIFFERENT path for the identical query — the bench-caught
+        // run-to-run route changes. So: stop at the first exact
+        // solution; the wall clock stays only as the upper bound for
+        // declaring NO PATH. Path quality is recovered downstream by
+        // the (now equally deterministic) reduceVertices /
+        // ropeShortcutPath / smoothBSpline pass.
+        ob::PlannerTerminationCondition ptc = ob::plannerOrTerminationCondition(
+            ob::timedPlannerTerminationCondition(t),
+            ob::exactSolnPlannerTerminationCondition(ss_->getProblemDefinition()));
+        const bool solved = (ss_->solve(ptc) == ob::PlannerStatus::EXACT_SOLUTION);
 
         out.solved = solved;
         if (!solved) return out;
@@ -734,8 +750,15 @@ static std::vector<Eigen::VectorXd> run_planner(
     double rail_weight = 0.01,
     const std::vector<double>& joint_weights = {})
 {
-    //setting the seed
-    //ompl::RNG::setSeed(seed);
+    // Seed OMPL's global RNG seed-generator BEFORE the fresh
+    // JointSpacePlanner below is constructed: every RNG-bearing
+    // object (planner, samplers, PathSimplifier) created after this
+    // draws a deterministic local seed, so the same problem yields
+    // the same path on every call and every machine. seed <= 0 is
+    // refused — OMPL treats setSeed(0) as "randomize", which is
+    // exactly the nondeterminism this line exists to remove.
+    if (seed > 0)
+        ompl::RNG::setSeed(static_cast<std::uint_fast32_t>(seed));
     ompl::msg::setLogLevel(ompl::msg::LOG_WARN);
 
     g_pkg_dir = pkg_dir;
