@@ -46,6 +46,25 @@ static std::vector<InputShape> parse_shape_list(const py::handle& obj) {
   return out;
 }
 
+// link_boxes: [{"link": "j5_link", "pose":[6], "scale":[3], "type": ...}, ...] —
+// a box that BELONGS to a robot link, pose in that link's frame.
+static std::vector<InputLinkShape> parse_link_shape_list(const py::handle& obj) {
+  std::vector<InputLinkShape> out;
+  if (obj.is_none()) return out;
+  auto lst = py::reinterpret_borrow<py::sequence>(obj);
+  out.reserve(py::len(lst));
+  for (auto item : lst) {
+    if (!py::isinstance<py::dict>(item))
+      throw std::runtime_error("link box must be a dict with keys: link, pose, scale, type");
+    auto d = py::reinterpret_borrow<py::dict>(item);
+    InputLinkShape ls;
+    ls.link  = d["link"].cast<std::string>();
+    ls.shape = parse_shape(item);
+    out.push_back(std::move(ls));
+  }
+  return out;
+}
+
 // ------------ Aux dirs ------------
 static std::array<Eigen::Vector3d,2> parse_aux(const py::handle& obj) {
   std::array<Eigen::Vector3d,2> a{};
@@ -98,13 +117,13 @@ PYBIND11_MODULE(core, m) {
        py::object scene,
        py::object load,
        py::object gripper,
+       py::object link_boxes,
        const Eigen::Matrix<double,6,1>& tool,
        const Eigen::Matrix<double,6,1>& base_in_world,
        const Eigen::Matrix<double,6,1>& frame_in_world,
        py::object aux_dir,
        double time_limit_sec,
        int seed,
-       bool has_camera,
        bool gravity,
        Eigen::Vector3d& gravity_vec,
        float gravity_thr,
@@ -119,6 +138,7 @@ PYBIND11_MODULE(core, m) {
       auto scene_v = parse_shape_list(scene);
       auto load_v  = parse_shape_list(load);
       auto gripper_v = parse_shape_list(gripper);
+      auto link_v  = parse_link_shape_list(link_boxes);
       auto aux     = parse_aux(aux_dir);
 
       std::vector<Eigen::VectorXd> wps;
@@ -128,8 +148,8 @@ PYBIND11_MODULE(core, m) {
         // stalls, socket.io misses heartbeats, and the viewer
         // disconnects/reloads mid-run.
         py::gil_scoped_release release;
-        wps = run_planner(start_joint, goal_joint, limit_n, limit_p, scene_v, load_v, gripper_v,
-                          tool, base_in_world, frame_in_world, aux, time_limit_sec, g_pkg_dir, seed, has_camera, gravity, gravity_vec, gravity_thr, planner, rail_weight, joint_weights);
+        wps = run_planner(start_joint, goal_joint, limit_n, limit_p, scene_v, load_v, gripper_v, link_v,
+                          tool, base_in_world, frame_in_world, aux, time_limit_sec, g_pkg_dir, seed, gravity, gravity_vec, gravity_thr, planner, rail_weight, joint_weights);
       }
       return to_numpy(wps);
     },
@@ -140,13 +160,13 @@ PYBIND11_MODULE(core, m) {
     py::arg("scene") = py::none(),
     py::arg("load")  = py::none(),
     py::arg("gripper") = py::none(),
+    py::arg("link_boxes") = py::none(),
     py::arg("tool"),
     py::arg("base_in_world"),
     py::arg("frame_in_world"),
     py::arg("aux_dir"),
     py::arg("time_limit_sec") = 1.0,
     py::arg("seed") = 1234,
-    py::arg("has_camera") = false,
     py::arg("gravity") = false,
     py::arg("gravity_vec"),
     py::arg("gravity_thr") = 1.0,
@@ -154,11 +174,12 @@ PYBIND11_MODULE(core, m) {
     py::arg("rail_weight") = 0.01,
     py::arg("joint_weights") = std::vector<double>{},
     R"doc(
-plan(start_joint=..., goal_joint=..., scene=[{pose,scale,type},...], load=[...], gripper = [...]
+plan(start_joint=..., goal_joint=..., scene=[{pose,scale,type},...], load=[...], gripper = [...], link_boxes=[{link,pose,scale,type},...]
      tool=[6], base_in_world=[6], frame_in_world=[6], aux_dir=[[3],[3]], time_limit_sec=1.0) -> np.ndarray (N, DOF)
 
 - start_joint / goal_joint: 1D arrays; DOF inferred from length.
 - scene / load: list of dicts with keys: pose(6), scale(3), type(path_planning.core.ShapeType.*).
+- link_boxes: boxes that belong to a robot link (pose in that link's frame) — collide like the link does.
 - tool, base_in_world, frame_in_world: vec6 (x,y,z,rx,ry,rz).
 - aux_dir: [vec3, vec3].
 )doc");
@@ -170,11 +191,11 @@ plan(start_joint=..., goal_joint=..., scene=[{pose,scale,type},...], load=[...],
        py::object scene,
        py::object load,
        py::object gripper,
+       py::object link_boxes,
        const Eigen::Matrix<double,6,1>& tool,
        const Eigen::Matrix<double,6,1>& base_in_world,
        const Eigen::Matrix<double,6,1>& frame_in_world,
        py::object aux_dir,
-       bool has_camera,
        bool gravity,
        Eigen::Vector3d& gravity_vec,
        float gravity_thr,
@@ -193,14 +214,15 @@ plan(start_joint=..., goal_joint=..., scene=[{pose,scale,type},...], load=[...],
       auto scene_v = parse_shape_list(scene);
       auto load_v  = parse_shape_list(load);
       auto gripper_v = parse_shape_list(gripper);
+      auto link_v  = parse_link_shape_list(link_boxes);
       auto aux     = parse_aux(aux_dir);
 
       bool ok;
       {
         py::gil_scoped_release release;
-        ok = run_check_path(wps, limit_n, limit_p, scene_v, load_v, gripper_v,
+        ok = run_check_path(wps, limit_n, limit_p, scene_v, load_v, gripper_v, link_v,
                             tool, base_in_world, frame_in_world, aux, g_pkg_dir,
-                            has_camera, gravity, gravity_vec, gravity_thr, rail_weight, joint_weights);
+                            gravity, gravity_vec, gravity_thr, rail_weight, joint_weights);
       }
       return ok;
     },
@@ -210,11 +232,11 @@ plan(start_joint=..., goal_joint=..., scene=[{pose,scale,type},...], load=[...],
     py::arg("scene") = py::none(),
     py::arg("load")  = py::none(),
     py::arg("gripper") = py::none(),
+    py::arg("link_boxes") = py::none(),
     py::arg("tool"),
     py::arg("base_in_world"),
     py::arg("frame_in_world"),
     py::arg("aux_dir"),
-    py::arg("has_camera") = false,
     py::arg("gravity") = false,
     py::arg("gravity_vec"),
     py::arg("gravity_thr") = 1.0,

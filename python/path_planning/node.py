@@ -5,14 +5,19 @@ import sys
 import dorna2.pose as dp
 
 def axis_angle_to_quaternion(axis_angle):
+    """Rotation vector (degrees) -> quaternion as python-fcl's Transform takes
+    it: [w, x, y, z]. (It was handed [x, y, z, w]: every rotated box the
+    python checker built — scene boxes, probes — came out mis-oriented, a
+    90 deg turn about z rendered as a 180 deg flip about (y+z). Robot links
+    were never affected: their transforms arrive as rotation matrices.)"""
     theta = np.linalg.norm(axis_angle)
     if theta < 1e-6:
-        return [0, 0, 0, 1]
+        return [1, 0, 0, 0]
     axis = axis_angle / theta
     x, y, z = axis
     theta = theta * np.pi / 180.0 
     s = np.sin(theta / 2.0)
-    return [x * s, y * s, z * s, np.cos(theta / 2.0)]
+    return [np.cos(theta / 2.0), x * s, y * s, z * s]
 
 
 def transform_to_matrix(xyz, rvec):
@@ -59,12 +64,12 @@ def fcl_transform_from_matrix(matrix4x4):
         except TypeError:
             # some builds want quaternion instead of rotation matrix
             from scipy.spatial.transform import Rotation as R
-            quat = R.from_matrix(rotation).as_quat()  # [x, y, z, w]
-            return fcl.Transform3f(quat, translation)
+            q = R.from_matrix(rotation).as_quat()  # scipy: [x, y, z, w]
+            return fcl.Transform3f([q[3], q[0], q[1], q[2]], translation)
     elif hasattr(fcl, "Transformd"):
         from scipy.spatial.transform import Rotation as R
-        quat = R.from_matrix(rotation).as_quat()
-        return fcl.Transformd(quat, translation)
+        q = R.from_matrix(rotation).as_quat()
+        return fcl.Transformd([q[3], q[0], q[1], q[2]], translation)
     else:
         raise ImportError("No suitable Transform class found in fcl module.")
 

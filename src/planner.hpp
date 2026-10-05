@@ -330,13 +330,17 @@ public:
             }
         }
 
-        //load vs robot 
+        // load / gripper vs robot: what rides the flange is bolted to the last
+        // link and sits against its parent (the wrist) by construction, so
+        // those two are never a hit — the same parent/child rule the links
+        // use among themselves, and the rule the Python checker applies.
+        // (A tool box touching the wrist used to invalidate every pose.)
         for (size_t a = 0; a < linkObjs_.size(); ++a) {
             for (auto& loadObj : loadObjs_) {
                 const size_t la = linkOfObj_[a];
                 const size_t lb = linkGeoms_.size() - 1;
                 if (la == lb)          continue; // shapes on same link
-                //if (isAdjacent(la,lb)) continue; // parent/child links
+                if (isAdjacent(la,lb)) continue; // parent/child links
                 if (collide(linkObjs_[a], loadObj)) return false;
             }
         }
@@ -682,6 +686,39 @@ struct InputShape {
   InShapeType                 type;
 };
 
+// A shape that belongs to a robot link (a camera on the wrist, a bracket on
+// the forearm): pose in THAT link's frame. Added to the link's own collision
+// geometry, so it moves with the link, collides with the world and with
+// non-adjacent links as the link does, and is never a self-hit against its
+// own link or its neighbours. The gripper is the j6_link case of this.
+struct InputLinkShape {
+  std::string link;
+  InputShape  shape;
+};
+
+// Append link-mounted shapes to the per-link collision geometry read from the URDF.
+static void attachLinkShapes(std::vector<LinkCollisions>& links,
+                             const std::vector<std::string>& linkNames,
+                             const std::vector<InputLinkShape>& link_shapes)
+{
+    for (const auto& ls : link_shapes) {
+        auto it = std::find(linkNames.begin(), linkNames.end(), ls.link);
+        if (it == linkNames.end()) {
+            std::string known;
+            for (const auto& n : linkNames) known += (known.empty() ? "" : ", ") + n;
+            throw std::runtime_error("link_boxes: no link '" + ls.link + "' (links: " + known + ")");
+        }
+        LinkCollision lc;
+        lc.shape.type = ShapeType::BOX;
+        lc.shape.box  = {ls.shape.scale(0), ls.shape.scale(1), ls.shape.scale(2)};
+        PoseAA p;
+        p.t    = Eigen::Vector3d(ls.shape.pose(0), ls.shape.pose(1), ls.shape.pose(2));
+        p.rvec = Eigen::Vector3d(ls.shape.pose(3), ls.shape.pose(4), ls.shape.pose(5));
+        lc.localTF = p.toIsometry();
+        links[static_cast<size_t>(it - linkNames.begin())].push_back(lc);
+    }
+}
+
 // rail_weight is the mm -> scaled-unit factor for the aux (rail) axes.
 // It is the rail's COST in the path-length metric: at 0.01, 100 mm of
 // rail costs like ~57° of arm and the optimizer avoids the rail;
@@ -735,6 +772,7 @@ static std::vector<Eigen::VectorXd> run_planner(
     const std::vector<InputShape>& scene,
     const std::vector<InputShape>& load,
     const std::vector<InputShape>& gripper,
+    const std::vector<InputLinkShape>& link_shapes,
     const Eigen::Matrix<double,6,1>& tool,
     const Eigen::Matrix<double,6,1>& base_in_world,
     const Eigen::Matrix<double,6,1>& frame_in_world,
@@ -742,7 +780,6 @@ static std::vector<Eigen::VectorXd> run_planner(
     double time_limit_sec,
     std::string pkg_dir,
     int seed,
-    bool has_camera,
     bool gravity,
     const Eigen::Vector3d& gravity_vec,
     float gravity_thr,
@@ -777,9 +814,7 @@ static std::vector<Eigen::VectorXd> run_planner(
     };
 
     // 1) Build FK
-    const std::string urdfRel = (has_camera)?"urdf/dorna_ta_camera.urdf":"urdf/dorna_ta.urdf";
-
-    URDFFK urdf_fk(resource_path(urdfRel), linkNames);
+    URDFFK urdf_fk(resource_path("urdf/dorna_ta.urdf"), linkNames);
 
     //Building limit
     std::vector<std::pair<double,double>> limits;
@@ -791,6 +826,7 @@ static std::vector<Eigen::VectorXd> run_planner(
     // 2) Prepare link collision boxes (sizes & local offsets per link frame)
     // read per-link collisions from URDF
     auto links = extractLinkCollisionsFromURDF(urdf_fk.model(), linkNames);
+    attachLinkShapes(links, linkNames, link_shapes);       // link-mounted boxes become link geometry
     // fall back if a link has no collision data:
     for (auto& lcvec : links) if (lcvec.empty()) {
         std::cout<<"\n link is empty of collision shapes";
@@ -920,12 +956,12 @@ static bool run_check_path(
     const std::vector<InputShape>& scene,
     const std::vector<InputShape>& load,
     const std::vector<InputShape>& gripper,
+    const std::vector<InputLinkShape>& link_shapes,
     const Eigen::Matrix<double,6,1>& tool,
     const Eigen::Matrix<double,6,1>& base_in_world,
     const Eigen::Matrix<double,6,1>& frame_in_world,
     const std::array<Eigen::Vector3d,2>& aux_dir,
     std::string pkg_dir,
-    bool has_camera,
     bool gravity,
     const Eigen::Vector3d& gravity_vec,
     float gravity_thr,
@@ -947,8 +983,7 @@ static bool run_check_path(
         "j0_link", "j1_link", "j2_link", "j3_link", "j4_link", "j5_link", "j6_link"
     };
 
-    const std::string urdfRel = (has_camera)?"urdf/dorna_ta_camera.urdf":"urdf/dorna_ta.urdf";
-    URDFFK urdf_fk(resource_path(urdfRel), linkNames);
+    URDFFK urdf_fk(resource_path("urdf/dorna_ta.urdf"), linkNames);
 
     std::vector<std::pair<double,double>> limits;
     limits.reserve(limit_n.size());
@@ -957,6 +992,7 @@ static bool run_check_path(
     }
 
     auto links = extractLinkCollisionsFromURDF(urdf_fk.model(), linkNames);
+    attachLinkShapes(links, linkNames, link_shapes);       // link-mounted boxes become link geometry
     for (auto& lcvec : links) if (lcvec.empty()) {
         std::cout<<"\n link is empty of collision shapes";
     }

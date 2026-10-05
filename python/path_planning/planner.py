@@ -26,7 +26,7 @@ class Planner:
 		frame_in_world=None,			# [x,y,z,rx,ry,rz]
 		aux_dir=None,				   # [[...],[...]]
 		aux_limit=None,				 # [[min,max],[min,max]]
-		has_camera=None,
+		link_boxes=None,			 # {link_name: [cube, ...]} — boxes that BELONG to a robot link
 		dorna=None
 	):
 		self.tool = [0, 0, 0, 0, 0, 0] if tool is None else tool
@@ -38,8 +38,13 @@ class Planner:
 		self.aux_dir = [[0, 0, 0], [0, 0, 0]] if aux_dir is None else [[aux_dir[0][0]/1000, aux_dir[0][1]/1000, aux_dir[0][2]/1000],
 				[aux_dir[1][0]/1000, aux_dir[1][1]/1000, aux_dir[1][2]/1000]]
 		self.aux_limit = [[-1, 1], [-1, 1]] if aux_limit is None else aux_limit
-		self.has_camera = False if has_camera is None else has_camera
-		self.aux_limit = [[-1, 1], [-1, 1]] if aux_limit is None else aux_limit
+		# Boxes attached to a robot LINK (a camera bolted to the wrist, a
+		# bracket on the forearm): {link_name: [cube, ...]}, each cube's pose
+		# in that link's frame. They move with the link and collide with the
+		# world and with non-adjacent links exactly as the link's own
+		# geometry does — same link / parent-child pairs are never a hit.
+		# Gripper boxes are the j6_link case of the same idea.
+		self.link_boxes = {} if link_boxes is None else dict(link_boxes)
 		self.dorna = Dorna() if dorna is None else dorna
 		self.rebuild()
 
@@ -54,7 +59,7 @@ class Planner:
 		aux_dir=None,
 		aux_limit=None,
 		gripper=None,
-		has_camera=None,
+		link_boxes=None,
 		dorna=None
 	):
 		"""Update any subset of stored parameters."""
@@ -76,8 +81,8 @@ class Planner:
 			self.aux_limit = aux_limit
 		if gripper is not None:
 			self.gripper = gripper
-		if has_camera is not None:
-			self.has_camera = has_camera
+		if link_boxes is not None:
+			self.link_boxes = dict(link_boxes)
 		if dorna is not None:
 			self.dorna = dorna
 
@@ -94,16 +99,17 @@ class Planner:
 		self.limit_n       = [limits["j0"][0],limits["j1"][0],limits["j2"][0],limits["j3"][0],limits["j4"][0],limits["j5"][0],self.aux_limit[0][0], self.aux_limit[1][0]]
 		self.limit_p       = [limits["j0"][1],limits["j1"][1],limits["j2"][1],limits["j3"][1],limits["j4"][1],limits["j5"][1],self.aux_limit[0][1], self.aux_limit[1][1]]
 
-		#mm to m
-		self.tool = mm_to_m_6(self.tool)
-		self.base_in_world = mm_to_m_6(self.base_in_world)
-		self.frame_in_world = mm_to_m_6(self.frame_in_world )
+		#mm to m — into their own names: the stored parameters stay in mm as
+		#given, so an update() of a subset never rescales the rest
+		self.tool_m = mm_to_m_6(self.tool)
+		self.base_in_world_m = mm_to_m_6(self.base_in_world)
+		self.frame_in_world_m = mm_to_m_6(self.frame_in_world)
 
 
 		#rebuilding initialization stuff
 		self.root_node = node.Node("root")
 
-		urdf_path = res = files("path_planning") / "resources" / "urdf" / ("dorna_ta.urdf" if not self.has_camera else "dorna_ta_camera.urdf")
+		urdf_path = res = files("path_planning") / "resources" / "urdf" / "dorna_ta.urdf"
 
 		self.robot = urdf.urdf_robot(urdf_path, {}, self.root_node)
 
@@ -123,7 +129,7 @@ class Planner:
 		#placing tool objects
 		for obj in self.load:
 			#create new obj
-			new_pose = m_to_mm_6(pose.T_to_xyzabc(np.matrix(pose.xyzabc_to_T(self.tool)) @ np.matrix(pose.xyzabc_to_T(mm_to_m_6(obj.pose)))))
+			new_pose = m_to_mm_6(pose.T_to_xyzabc(np.matrix(pose.xyzabc_to_T(self.tool_m)) @ np.matrix(pose.xyzabc_to_T(mm_to_m_6(obj.pose)))))
 			new_obj = Planner.create_cube(new_pose, [obj.scale[0], obj.scale[1], obj.scale[2]])
 
 			self.robot.link_nodes["j6_link"].collisions.append(new_obj)
@@ -136,6 +142,16 @@ class Planner:
 			self.robot.all_objs.append(obj)
 			self.robot.prnt_map[id(obj.fcl_shape)] = self.robot.link_nodes["j6_link"]
 
+		#placing link-mounted objects: part of their link, like the gripper is of j6_link
+		for link_name, objs in self.link_boxes.items():
+			if link_name not in self.robot.link_nodes:
+				raise ValueError("link_boxes: no link %r (links: %s)" % (link_name, ", ".join(self.robot.link_nodes)))
+			nod = self.robot.link_nodes[link_name]
+			for obj in objs:
+				nod.collisions.append(obj)
+				self.robot.all_objs.append(obj)
+				self.robot.prnt_map[id(obj.fcl_shape)] = nod
+
 		#registering robot objects
 		for obj in self.robot.all_objs:
 			self.dynamic_objects.append(obj)
@@ -146,12 +162,62 @@ class Planner:
 		self.manager.registerObjects(self.all_objects)  # list of all your CollisionObjects
 		self.manager.setup()  # Builds the BVH tree
 
-		self.base_in_world_mat = pose.xyzabc_to_T(self.base_in_world)
-		self.frame_in_world_inv = np.linalg.inv(pose.xyzabc_to_T(self.frame_in_world))
+		self.base_in_world_mat = pose.xyzabc_to_T(self.base_in_world_m)
+		self.frame_in_world_inv = np.linalg.inv(pose.xyzabc_to_T(self.frame_in_world_m))
 
 		self.aux_dir_1 = self.base_in_world_mat @ np.array([self.aux_dir[0][0], self.aux_dir[0][1], self.aux_dir[0][2], 0])
 		self.aux_dir_2 = self.base_in_world_mat @ np.array([self.aux_dir[1][0], self.aux_dir[1][1], self.aux_dir[1][2], 0])
 
+
+	def link_frames(self, joint, base_in_world=None):
+		"""Where the robot's links are at ``joint`` (degrees; rail axes in mm
+		after index 5): ``{link_name: 4x4 world transform in METRES}`` for
+		every URDF link — the planner's own FK, the frame a link box's pose
+		is relative to. The scene tree is a second model of the same robot
+		with its own link frames; a box that belongs to a link is expressed
+		here from its world pose, never by assuming the two frames coincide.
+		``base_in_world`` (mm) overrides the stored base for this call, so
+		the frames can be asked for BEFORE the update that sets it."""
+		j = list(joint)
+		if base_in_world is None:
+			base_mat = np.array(self.base_in_world_mat)
+			aux_1, aux_2 = self.aux_dir_1, self.aux_dir_2
+		else:
+			base_mat = np.array(pose.xyzabc_to_T(mm_to_m_6(base_in_world)))
+			aux_1 = base_mat @ np.array([self.aux_dir[0][0], self.aux_dir[0][1], self.aux_dir[0][2], 0])
+			aux_2 = base_mat @ np.array([self.aux_dir[1][0], self.aux_dir[1][1], self.aux_dir[1][2], 0])
+		aux_offset = np.array([0, 0, 0])
+		if len(j) > 6:
+			aux_offset = aux_offset + j[6] * aux_1[:3]
+		if len(j) > 7:
+			aux_offset = aux_offset + j[7] * aux_2[:3]
+		base_mat[0, 3] += aux_offset[0]
+		base_mat[1, 3] += aux_offset[1]
+		base_mat[2, 3] += aux_offset[2]
+		root = self.frame_in_world_inv @ base_mat
+		self.robot.set_joint_values([j[0], j[1], j[2], j[3], j[4], j[5]], root)
+		# Node.get_global_transform() is the chain below the root; the root
+		# (base on the rail, in the planner frame) is applied on top.
+		frame = np.array(pose.xyzabc_to_T(self.frame_in_world_m))
+		return {name: frame @ root @ np.array(nod.get_global_transform(), dtype=float)
+				for name, nod in self.robot.link_nodes.items()}
+
+	def robot_boxes(self, joint, base_in_world=None):
+		"""The robot as THIS planner sees it at ``joint``: every URDF link's
+		collision boxes (and any gripper / link boxes attached), each as
+		``{"link", "pose": [x, y, z, a, b, c] in WORLD mm, "scale": mm}``.
+		For drawing the planner's robot next to the scene's — what collision
+		is checked against, where the planner believes it stands."""
+		self.link_frames(joint, base_in_world)           # poses every collision object (gt)
+		frame = np.array(pose.xyzabc_to_T(self.frame_in_world_m))
+		out = []
+		for name, nod in self.robot.link_nodes.items():
+			for obj in nod.collisions:
+				T = frame @ np.array(obj.gt, dtype=float)
+				T = T.copy(); T[:3, 3] *= 1000.0
+				out.append({"link": name, "pose": [float(v) for v in pose.T_to_xyzabc(T)],
+							"scale": [float(v) * 1000.0 for v in obj.scale]})
+		return out
 
 	def check_collision(self, joint, internal=True):
 
@@ -291,6 +357,16 @@ class Planner:
 								"type":  core.ShapeType.Box         # enum 
 								})	
 
+		link_list = []
+		for link_name, objs in self.link_boxes.items():
+			for obj in objs:
+				link_list.append({
+								"link":  link_name,
+								"pose":  obj.pose,          # vec6, in the link's frame
+								"scale": obj.scale,                # vec3
+								"type":  core.ShapeType.Box         # enum
+								})
+
 		dof = len(start)
 		
 		if not gravity :
@@ -304,13 +380,13 @@ class Planner:
 						scene         = scene_list,
 						load          = load_list,
 						gripper       = gripper_list,
-						tool          = np.array(self.tool, dtype=float),
-						base_in_world = np.array(self.base_in_world, dtype=float),
-						frame_in_world= np.array(self.frame_in_world, dtype=float),
+						tool          = np.array(self.tool_m, dtype=float),
+						base_in_world = np.array(self.base_in_world_m, dtype=float),
+						frame_in_world= np.array(self.frame_in_world_m, dtype=float),
 						aux_dir       = self.aux_dir,
 						time_limit_sec= time_limit_sec,
 						seed 		  = seed,
-						has_camera	  = self.has_camera,
+						link_boxes    = link_list,
 						gravity		  = gravity,
 						gravity_vec	  = np.array(gravity_vec, dtype=float).reshape(3, 1),
 						gravity_thr	  = gravity_thr,
@@ -360,6 +436,10 @@ class Planner:
 								"type":  core.ShapeType.Box         # enum
 								})
 
+		link_list = []
+		for link_name, objs in self.link_boxes.items():
+			for obj in objs:
+				link_list.append({"link": link_name, "pose": obj.pose, "scale": obj.scale, "type": core.ShapeType.Box})
 		dof = len(path[0])
 
 		if not gravity :
@@ -372,11 +452,11 @@ class Planner:
 						scene         = scene_list,
 						load          = load_list,
 						gripper       = gripper_list,
-						tool          = np.array(self.tool, dtype=float),
-						base_in_world = np.array(self.base_in_world, dtype=float),
-						frame_in_world= np.array(self.frame_in_world, dtype=float),
+						tool          = np.array(self.tool_m, dtype=float),
+						base_in_world = np.array(self.base_in_world_m, dtype=float),
+						frame_in_world= np.array(self.frame_in_world_m, dtype=float),
 						aux_dir       = self.aux_dir,
-						has_camera    = self.has_camera,
+						link_boxes    = link_list,
 						gravity       = gravity,
 						gravity_vec   = np.array(gravity_vec, dtype=float).reshape(3, 1),
 						gravity_thr   = gravity_thr,
